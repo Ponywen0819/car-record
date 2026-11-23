@@ -41,9 +41,16 @@ docker compose up -d --build
 | 環境變數 | 預設值 | 說明 |
 |---|---|---|
 | `PORT` | `8080` | 純 HTTP 連接埠（HTTPS 由外部處理） |
-| `DATA_DIR` | `./data` | `app.db`（SQLite）和 `photos/`，**備份這個資料夾即可** |
+| `DATA_DIR` | `./data`（Docker 裡是 `/data`，掛在 `car-record-data` volume） | `app.db`（SQLite）和 `photos/`，**備份這個資料夾即可** |
 | `STATIC_DIR` | `apps/web/dist` | 前端 build 輸出 |
 | `API_TOKEN` | （無） | 設定後 `/api/*` 需要 `Authorization: Bearer <token>`；App 的「設定 → 同步」可以填入 |
+
+## CI
+
+`.github/workflows/docker-publish.yml` 全部跑在自架 runner（labels：`self-hosted`、`home`）上。推到 `main` 會先跑測試，通過後建置 `linux/amd64` image 並推到 `ghcr.io/ponywen0819/car-record`。
+
+- runner 容器要能使用 Docker（例如掛載 `/var/run/docker.sock`），才能建置 image
+- repo 是公開的：來自 fork 的 PR 不會在自架 runner 上執行
 
 ## iPhone 捷徑網址
 

@@ -17,10 +17,17 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Everything to back up lives here: app.db (SQLite) + photos/
-      - ./data:/data
+      # Everything to back up lives here: app.db (SQLite) + photos/.
+      # A named volume (not a ./data bind mount) so it is created owned by the
+      # container's non-root `node` user. Back it up with Dokploy volume backups or:
+      #   docker run --rm -v car-record-data:/data -v "$PWD":/backup busybox tar czf /backup/car-record.tgz -C /data .
+      - car-record-data:/data
     environment:
       PORT: "8080"
       # Optional: require "Authorization: Bearer <token>" on /api/*
       # API_TOKEN: "change-me"
     restart: unless-stopped
+
+volumes:
+  car-record-data:
+    name: car-record-data
