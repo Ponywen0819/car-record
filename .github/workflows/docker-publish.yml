@@ -4,11 +4,13 @@ name: Test & publish image
 # The runner needs access to a Docker daemon for the image job
 # (e.g. /var/run/docker.sock mounted into the runner container).
 
+# Git flow (see CLAUDE.md): develop = integration, main = releases (always tagged vX.Y.Z).
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
@@ -37,8 +39,9 @@ jobs:
 
   image:
     needs: test
-    # Pull requests only run the tests; images are published from main and version tags.
-    if: github.event_name != 'pull_request'
+    # Images are published only from main (:latest, :sha-xxx) and version tags (:X.Y.Z).
+    # develop and pull requests only run the tests.
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: [self-hosted, docker]
     permissions:
       contents: read
