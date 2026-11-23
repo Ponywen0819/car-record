@@ -1,0 +1,26 @@
+# Usage on the home host (from this folder):
+#   docker compose pull && docker compose up -d
+#
+# The image is built and published by GitHub Actions (.github/workflows/docker-publish.yml).
+# If the GitHub package is private, log in once first:
+#   echo <PAT with read:packages> | docker login ghcr.io -u Ponywen0819 --password-stdin
+#
+# To build locally instead of pulling: docker compose up -d --build
+services:
+  car-record:
+    image: ghcr.io/ponywen0819/car-record:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: car-record
+    pull_policy: always
+    ports:
+      - "8080:8080"
+    volumes:
+      # Everything to back up lives here: app.db (SQLite) + photos/
+      - ./data:/data
+    environment:
+      PORT: "8080"
+      # Optional: require "Authorization: Bearer <token>" on /api/*
+      # API_TOKEN: "change-me"
+    restart: unless-stopped

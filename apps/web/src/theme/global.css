@@ -1,0 +1,632 @@
+/* Global styles (SPEC §5.5). Ionic handles most safe-area padding (header, tab bar, toolbars). */
+
+:root {
+  --ion-color-primary: #1f6feb;
+  --ion-color-primary-rgb: 31, 111, 235;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #1b62cf;
+  --ion-color-primary-tint: #357def;
+
+  --app-bg: #f2f2f7;
+  --app-card-bg: #ffffff;
+  --app-input-bg: #ffffff;
+  --app-border: #d1d1d6;
+  --app-muted: #6e6e73;
+  --app-chip-bg: #ffffff;
+  --app-warning-bg: #fff4d6;
+  --app-warning-fg: #7a5200;
+  --app-danger-fg: #c0262d;
+  --app-success-fg: #1b7f3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #000000;
+    --app-card-bg: #1c1c1e;
+    --app-input-bg: #1c1c1e;
+    --app-border: #3a3a3c;
+    --app-muted: #a1a1a6;
+    --app-chip-bg: #1c1c1e;
+    --app-warning-bg: #3d2f05;
+    --app-warning-fg: #ffd56b;
+    --app-danger-fg: #ff6b6b;
+    --app-success-fg: #5fd38a;
+  }
+}
+
+html,
+body {
+  overscroll-behavior: none;
+  background: var(--app-bg);
+}
+
+* {
+  /* No 300 ms double-tap delay. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+ion-content {
+  --background: var(--app-bg);
+}
+
+/* iOS zooms the page when focusing inputs smaller than 16px. */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}
+
+/* Press feedback instead of haptics (no Vibration API on iOS). */
+.pressable {
+  transition: transform 80ms ease-out, opacity 80ms ease-out;
+}
+.pressable:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+ion-item.press-item {
+  transition: transform 80ms ease-out;
+}
+ion-item.press-item:active {
+  transform: scale(0.985);
+}
+
+/* Long-press targets: no iOS callout / text selection. */
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------- layout ---------- */
+
+.page-pad {
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.section-title {
+  margin: 20px 16px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--app-muted);
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.section-title a,
+.section-title button {
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--ion-color-primary);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: none;
+}
+
+.card {
+  background: var(--app-card-bg);
+  border-radius: 14px;
+  margin: 8px 16px;
+  padding: 16px;
+}
+
+ion-list.inset-list {
+  margin: 0 16px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.empty {
+  text-align: center;
+  color: var(--app-muted);
+  padding: 24px 16px;
+  font-size: 15px;
+}
+
+.muted {
+  color: var(--app-muted);
+}
+
+/* ---------- home ---------- */
+
+.odo-card {
+  text-align: center;
+  touch-action: pan-y;
+}
+.odo-card .odo-label {
+  color: var(--app-muted);
+  font-size: 14px;
+}
+.odo-card .odo-value {
+  font-size: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  margin: 4px 0;
+}
+.odo-card .odo-sub {
+  color: var(--app-muted);
+  font-size: 13px;
+}
+.vehicle-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.vehicle-switch button {
+  background: none;
+  border: 0;
+  color: var(--ion-color-primary);
+  font-size: 22px;
+  min-width: 44px;
+  min-height: 44px;
+}
+.vehicle-switch .vehicle-name {
+  font-weight: 600;
+  font-size: 17px;
+}
+.dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-border);
+}
+.dots span.on {
+  background: var(--ion-color-primary);
+}
+
+.economy-row {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+.economy-row .big {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.economy-row .small {
+  font-size: 12px;
+  color: var(--app-muted);
+}
+.hint-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--app-warning-bg);
+  color: var(--app-warning-fg);
+  font-size: 14px;
+}
+
+.level-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-inline-end: 12px;
+  flex: none;
+}
+.level-overdue {
+  background: var(--ion-color-danger);
+}
+.level-soon {
+  background: var(--ion-color-warning);
+}
+.level-unknown {
+  background: var(--ion-color-medium);
+}
+.level-ok {
+  background: var(--ion-color-success);
+}
+.reminder-progress {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* ---------- sync chip ---------- */
+
+.sync-chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+  white-space: nowrap;
+  /* stay clear of the centred iOS title; full text is in Settings → 同步 */
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(var(--ion-color-medium-rgb, 146, 148, 156), 0.16);
+  color: var(--ion-text-color, #000);
+}
+.sync-chip.tone-success {
+  color: var(--app-success-fg);
+  background: rgba(45, 211, 111, 0.14);
+}
+.sync-chip.tone-warning {
+  color: var(--app-warning-fg);
+  background: var(--app-warning-bg);
+}
+.sync-chip.tone-danger {
+  color: var(--app-danger-fg);
+  background: rgba(235, 68, 90, 0.14);
+}
+.sync-chip.tone-primary {
+  color: var(--ion-color-primary);
+  background: rgba(var(--ion-color-primary-rgb), 0.12);
+}
+
+/* ---------- tab bar ➕ ---------- */
+
+.add-tab-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  min-height: 49px;
+}
+.add-tab-button .add-circle {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--ion-color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.4);
+  transition: transform 80ms ease-out;
+}
+.add-tab-button:active .add-circle {
+  transform: scale(0.92);
+}
+
+/* ---------- forms ---------- */
+
+.form-body {
+  padding: 8px 16px 24px;
+}
+.field {
+  margin: 12px 0;
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-muted);
+  margin: 0 0 6px 2px;
+}
+.field-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input {
+  width: 100%;
+  min-height: 46px;
+  font-size: 17px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-input-bg);
+  color: var(--ion-text-color, inherit);
+  font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+  font-variant-numeric: tabular-nums;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--ion-color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--ion-color-primary-rgb), 0.2);
+}
+.input[type='date'] {
+  display: block;
+  text-align: left;
+}
+.textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+select.input {
+  background-image: linear-gradient(45deg, transparent 50%, var(--app-muted) 50%),
+    linear-gradient(135deg, var(--app-muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+.field-suffix {
+  position: absolute;
+  right: 12px;
+  color: var(--app-muted);
+  font-size: 15px;
+  pointer-events: none;
+}
+.field-control:has(.field-suffix) .input {
+  padding-right: 48px;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--app-muted);
+  margin: 4px 2px 0;
+}
+.field-error {
+  font-size: 13px;
+  color: var(--app-danger-fg);
+  margin: 4px 2px 0;
+}
+.has-error .input {
+  border-color: var(--ion-color-danger);
+}
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field-row > .field {
+  margin: 12px 0 0;
+  min-width: 0;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  margin: 12px 0;
+  font-size: 16px;
+}
+.switch {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 999px;
+  background: var(--app-border);
+  transition: background 150ms;
+  flex: none;
+  margin: 0;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 150ms;
+}
+.switch:checked {
+  background: var(--ion-color-success);
+}
+.switch:checked::after {
+  transform: translateX(20px);
+}
+
+.chip-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  position: relative;
+  border-radius: 999px;
+  padding: 8px 14px;
+  min-height: 38px;
+  font-size: 15px;
+  border: 1px solid var(--app-border);
+  background: var(--app-chip-bg);
+  color: var(--ion-text-color, inherit);
+  font-family: inherit;
+}
+.chip.on {
+  background: var(--ion-color-primary);
+  border-color: var(--ion-color-primary);
+  color: #fff;
+}
+.chip.hinted:not(.on) {
+  border-color: var(--ion-color-warning);
+}
+.chip-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ion-color-warning);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.more-button {
+  display: block;
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--app-border);
+  background: none;
+  color: var(--ion-color-primary);
+  font-size: 15px;
+}
+
+.save-bar {
+  background: var(--app-bg);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  transition: transform 120ms ease-out;
+}
+.save-bar.keyboard-open {
+  padding-bottom: 8px;
+}
+.save-bar ion-button {
+  margin: 0;
+  height: 50px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.form-warning {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--app-warning-bg);
+  color: var(--app-warning-fg);
+  font-size: 14px;
+}
+.form-error {
+  margin: 0 0 8px;
+  color: var(--app-danger-fg);
+  font-size: 14px;
+}
+
+.photo-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.photo-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--app-border);
+}
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.photo-thumb button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  line-height: 24px;
+  padding: 0;
+}
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+.button-row > * {
+  flex: 1;
+}
+.plain-button {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-bg);
+  color: var(--ion-color-primary);
+  font-size: 15px;
+  font-family: inherit;
+}
+.danger-link {
+  display: block;
+  width: 100%;
+  margin-top: 24px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--app-danger-fg);
+  font-size: 16px;
+}
+
+/* ---------- records ---------- */
+
+.month-header {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 16px;
+}
+.record-cost {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ---------- stats ---------- */
+
+.stats-swipe {
+  touch-action: pan-y;
+  min-height: 100%;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 16px;
+}
+.tile {
+  background: var(--app-card-bg);
+  border-radius: 14px;
+  padding: 12px;
+}
+.tile .tile-label {
+  font-size: 12px;
+  color: var(--app-muted);
+}
+.tile .tile-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.chart-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.chart-box {
+  position: relative;
+  height: 220px;
+}
+.chart-box.small {
+  height: 200px;
+}
+
+.splash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--app-muted);
+}
+
+.error-screen {
+  padding: calc(env(safe-area-inset-top) + 24px) 20px 24px;
+  font-size: 15px;
+}
+.error-screen pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: var(--app-muted);
+}

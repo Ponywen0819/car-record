@@ -1,0 +1,49 @@
+{
+  "name": "@car-record/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run && vitest run -c vitest.integration.config.ts",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@car-record/shared": "workspace:*",
+    "@ionic/react": "^8.8.21",
+    "@ionic/react-router": "^8.8.21",
+    "browser-image-compression": "^2.0.2",
+    "chart.js": "^4.6.1",
+    "date-fns": "^4.4.0",
+    "dexie": "^4.4.7",
+    "dexie-react-hooks": "^4.4.0",
+    "ionicons": "^8.1.1",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "^5.3.4",
+    "react-router-dom": "^5.3.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/react-router": "^5.1.20",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^6.3.0",
+    "fake-indexeddb": "^6.2.8",
+    "jsdom": "^31.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.1"
+  }
+}
