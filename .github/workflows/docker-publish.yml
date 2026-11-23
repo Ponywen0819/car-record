@@ -1,6 +1,6 @@
 name: Test & publish image
 
-# All jobs run on the self-hosted runner at home (labels: self-hosted, home).
+# All jobs run on the self-hosted runner at home (labels: self-hosted, docker).
 # The runner needs access to a Docker daemon for the image job
 # (e.g. /var/run/docker.sock mounted into the runner container).
 
@@ -19,7 +19,7 @@ jobs:
   test:
     # Public repo: never run pull requests from forks on the home runner.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, home]
+    runs-on: [self-hosted, docker]
     permissions:
       contents: read
     steps:
@@ -39,7 +39,7 @@ jobs:
     needs: test
     # Pull requests only run the tests; images are published from main and version tags.
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, home]
+    runs-on: [self-hosted, docker]
     permissions:
       contents: read
       packages: write
