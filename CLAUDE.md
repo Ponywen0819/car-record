@@ -52,7 +52,7 @@ tag 一旦推上去就不要刪除或移動；有問題就發新的 PATCH 版本
 ### CI（`.github/workflows/docker-publish.yml`）
 
 - 全部跑在 self-hosted runner（labels：`self-hosted`、`docker`）上。
-- 推到 `develop`、`main`，以及 PR：跑型別檢查和全部測試。
+- 推到 `develop`、`main`，以及 PR：跑型別檢查和全部測試，再對暫時啟動的真 Postgres 容器跑一次 server 和整合測試。
 - 只有 `main` 和 `v*` tag 會建置並推送 image。
 - repo 是公開的：來自 fork 的 PR 不會在 self-hosted runner 上執行。
 
@@ -62,7 +62,8 @@ tag 一旦推上去就不要刪除或移動；有問題就發新的 PATCH 版本
 - 合併前必須通過：
   ```bash
   pnpm typecheck
-  pnpm test        # shared、server、web 單元測試 + 真實 server 整合測試
+  pnpm test        # shared、server、web 單元測試 + 真實 server 整合測試（資料庫用 PGlite）
   ```
+- 資料庫是 PostgreSQL（`DATABASE_URL`）。schema 變更一律在 `apps/server/src/store.ts` 的 `MIGRATIONS` 新增一筆，不要修改已發布的 migration。
 - 這個 repo 的 commit 作者信箱用 GitHub noreply（`71641392+Ponywen0819@users.noreply.github.com`），不要用個人信箱。
 - HTTPS、對外連線和存取控制都在專案外處理；server 只提供純 HTTP。

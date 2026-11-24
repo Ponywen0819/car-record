@@ -15,11 +15,14 @@ import {
   type PushResponse,
   type PushResult,
 } from '@car-record/shared';
-import { Store } from './db';
+import type { Database } from './database';
+import { Store } from './store';
 import { serveStatic } from './static';
 
 export interface CreateAppOptions {
-  /** Directory holding app.db and photos/. Created if missing. */
+  /** Postgres connection (node-postgres pool in production, PGlite in tests). Closed by close(). */
+  database: Database;
+  /** Directory holding photos/. Created if missing. */
   dataDir: string;
   /** When non-empty, every /api/* request needs `Authorization: Bearer <apiToken>`. */
   apiToken?: string;
@@ -34,7 +37,7 @@ export interface ServerApp {
   /** Underlying storage (exposed for tests and maintenance tooling). */
   store: Store;
   /** Close the database. The Hono app must not be used afterwards. */
-  close(): void;
+  close(): Promise<void>;
 }
 
 export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
@@ -44,7 +47,7 @@ const PHOTO_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 const NON_NEG_INT_RE = /^\d+$/;
 
-const jsonError = (c: Context, status: 400 | 401 | 404 | 413 | 415 | 500, error: string) =>
+const jsonError = (c: Context, status: 400 | 401 | 404 | 413 | 415 | 500 | 503, error: string) =>
   c.json({ error }, status);
 
 function tokensEqual(a: string, b: string): boolean {
@@ -66,8 +69,9 @@ function parseNonNegInt(raw: string | undefined, fallback: number): number | nul
   return Number.isSafeInteger(n) ? n : null;
 }
 
-export function createApp(opts: CreateAppOptions): ServerApp {
-  const store = new Store(opts.dataDir, opts.now);
+/** Create the app; runs pending database migrations first (rejects if Postgres is unreachable). */
+export async function createApp(opts: CreateAppOptions): Promise<ServerApp> {
+  const store = await Store.open(opts.database, opts.now);
   const photosDir = path.join(opts.dataDir, 'photos');
   fs.mkdirSync(photosDir, { recursive: true });
   const apiToken = opts.apiToken || undefined;
@@ -76,7 +80,14 @@ export function createApp(opts: CreateAppOptions): ServerApp {
 
   app.use(compress());
 
-  app.get('/healthz', (c) => c.json({ ok: true }));
+  app.get('/healthz', async (c) => {
+    try {
+      await store.ping();
+      return c.json({ ok: true });
+    } catch {
+      return c.json({ ok: false, error: 'database unavailable' }, 503);
+    }
+  });
 
   // --- auth -----------------------------------------------------------------
   if (apiToken) {
@@ -112,7 +123,11 @@ export function createApp(opts: CreateAppOptions): ServerApp {
       const validIdx: number[] = [];
       raw.forEach((item, i) => {
         const parsed = mutationSchema.safeParse(item);
-        if (parsed.success) {
+        // JSON.stringify writes U+0000 as the 6-character escape \u0000.
+        if (parsed.success && JSON.stringify(parsed.data.record).includes('\\u0000')) {
+          // Postgres JSONB cannot store U+0000; reject this one instead of failing the whole batch.
+          results[i] = { mutationId: parsed.data.mutationId, status: 'rejected', error: 'NUL characters are not allowed' };
+        } else if (parsed.success) {
           valid.push(parsed.data as Mutation);
           validIdx.push(i);
         } else {
@@ -125,7 +140,7 @@ export function createApp(opts: CreateAppOptions): ServerApp {
         }
       });
 
-      const applied = store.applyMutations(valid);
+      const applied = await store.applyMutations(valid);
       applied.forEach((r, j) => {
         results[validIdx[j]!] = { mutationId: valid[j]!.mutationId, status: r.status, rev: r.rev };
       });
@@ -134,12 +149,12 @@ export function createApp(opts: CreateAppOptions): ServerApp {
     },
   );
 
-  app.get('/api/sync/pull', (c) => {
+  app.get('/api/sync/pull', async (c) => {
     const since = parseNonNegInt(c.req.query('since'), 0);
     if (since === null) return jsonError(c, 400, 'since must be a non-negative integer');
     const limit = parseNonNegInt(c.req.query('limit'), PULL_DEFAULT_LIMIT);
     if (limit === null || limit < 1) return jsonError(c, 400, 'limit must be a positive integer');
-    const page = store.pull(since, Math.min(limit, PULL_MAX_LIMIT));
+    const page = await store.pull(since, Math.min(limit, PULL_MAX_LIMIT));
     return c.json(page satisfies PullResponse);
   });
 
@@ -163,7 +178,7 @@ export function createApp(opts: CreateAppOptions): ServerApp {
       const tmp = `${final}.${crypto.randomUUID()}.tmp`;
       await fs.promises.writeFile(tmp, data);
       await fs.promises.rename(tmp, final);
-      const created = store.savePhoto(id, type, data.byteLength);
+      const created = await store.savePhoto(id, type, data.byteLength);
       return c.json({ id, size: data.byteLength, contentType: type }, created ? 201 : 200);
     },
   );
@@ -171,7 +186,7 @@ export function createApp(opts: CreateAppOptions): ServerApp {
   app.get('/api/photos/:id', async (c) => {
     const id = c.req.param('id');
     if (!PHOTO_ID_RE.test(id)) return jsonError(c, 400, 'Invalid photo id');
-    const meta = store.getPhoto(id);
+    const meta = await store.getPhoto(id);
     if (!meta) return jsonError(c, 404, 'Photo not found');
     let data: Buffer;
     try {

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "pnpm -r --workspace-concurrency=1 test",
+    "test:postgres": "pnpm --filter @car-record/server exec vitest run && pnpm --filter @car-record/web exec vitest run -c vitest.integration.config.ts",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm --filter @car-record/web build && pnpm --filter @car-record/server build",
     "dev:web": "pnpm --filter @car-record/web dev",

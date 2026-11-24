@@ -6,6 +6,17 @@
 #   echo <PAT with read:packages> | docker login ghcr.io -u Ponywen0819 --password-stdin
 #
 # To build locally instead of pulling: docker compose up -d --build
+#
+# Database: your existing Postgres (12+). Create a dedicated database once, e.g.
+#   CREATE ROLE car_record LOGIN PASSWORD 'change-me';
+#   CREATE DATABASE car_record OWNER car_record;
+# Tables are created / migrated automatically on startup.
+#
+# Settings come from environment variables (Dokploy: the app's Environment tab;
+# by hand: copy .env.example to .env next to this file). Nothing secret is stored here.
+#   DATABASE_URL  required, e.g. postgres://car_record:secret@db-host:5432/car_record
+#                 (a host the container can reach — not localhost)
+#   API_TOKEN     optional; when set, /api/* needs "Authorization: Bearer <token>"
 services:
   car-record:
     image: ghcr.io/ponywen0819/car-record:latest
@@ -17,15 +28,16 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Everything to back up lives here: app.db (SQLite) + photos/.
+      # Photos live here; all records live in Postgres. Back up both
+      # (records: pg_dump "$DATABASE_URL" > car-record.sql).
       # A named volume (not a ./data bind mount) so it is created owned by the
       # container's non-root `node` user. Back it up with Dokploy volume backups or:
       #   docker run --rm -v car-record-data:/data -v "$PWD":/backup busybox tar czf /backup/car-record.tgz -C /data .
       - car-record-data:/data
     environment:
       PORT: "8080"
-      # Optional: require "Authorization: Bearer <token>" on /api/*
-      # API_TOKEN: "change-me"
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (see the comment at the top of this file)}
+      API_TOKEN: ${API_TOKEN:-}
     restart: unless-stopped
 
 volumes:

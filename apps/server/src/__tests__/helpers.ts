@@ -1,20 +1,23 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach } from 'vitest';
+import { afterAll, afterEach } from 'vitest';
 import { createApp, type CreateAppOptions, type ServerApp } from '../app';
+import { closeSharedPglite, createTestDatabase, type TestDatabase } from '../testing/testDatabase';
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => unknown)[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   while (cleanups.length) {
     try {
-      cleanups.pop()!();
+      await cleanups.pop()!();
     } catch {
       // ignore cleanup errors (e.g. Windows file locks)
     }
   }
 });
+
+afterAll(closeSharedPglite);
 
 export function tmpDir(prefix = 'car-record-server-'): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -22,12 +25,35 @@ export function tmpDir(prefix = 'car-record-server-'): string {
   return dir;
 }
 
-/** Create an app on a fresh temp dataDir (or the given one); closed automatically after each test. */
-export function makeApp(opts: Partial<CreateAppOptions> = {}): ServerApp & { dataDir: string } {
-  const dataDir = opts.dataDir ?? tmpDir();
-  const server = createApp({ ...opts, dataDir });
+/** A fresh, migrated test schema; dropped automatically after the test. */
+export async function testDatabase(): Promise<TestDatabase> {
+  const testDb = await createTestDatabase();
+  cleanups.unshift(() => testDb.dispose());
+  return testDb;
+}
+
+export interface TestApp extends ServerApp {
+  dataDir: string;
+  testDb: TestDatabase;
+  /** Start a second app on the same database schema and dataDir (a server restart). */
+  reopen(opts?: Partial<Omit<CreateAppOptions, 'database' | 'dataDir'>>): Promise<TestApp>;
+}
+
+type MakeAppOptions = Partial<Omit<CreateAppOptions, 'database'>> & { testDb?: TestDatabase };
+
+/** Create an app on a fresh temp dataDir + database schema; closed automatically after each test. */
+export async function makeApp(opts: MakeAppOptions = {}): Promise<TestApp> {
+  const { testDb: givenDb, ...appOpts } = opts;
+  const dataDir = appOpts.dataDir ?? tmpDir();
+  const testDb = givenDb ?? (await testDatabase());
+  const server = await createApp({ ...appOpts, dataDir, database: await testDb.open() });
   cleanups.push(() => server.close());
-  return { ...server, dataDir };
+  return {
+    ...server,
+    dataDir,
+    testDb,
+    reopen: (more = {}) => makeApp({ ...appOpts, ...more, dataDir, testDb }),
+  };
 }
 
 let counter = 0;
