@@ -89,6 +89,8 @@ export const fuelRecordSchema = entryCommon.extend({
   station: z.string().optional(),
   /** e.g. '92' | '95' | '98' | 'diesel' — free text so EV chargers etc. also fit. */
   grade: z.string().optional(),
+  /** Taiwan e-invoice track + number, e.g. 'QZ87654321'. */
+  invoiceNumber: z.string().regex(/^[A-Z]{2}\d{8}$/).optional(),
 });
 
 export const expenseRecordSchema = entryCommon.extend({
