@@ -8,3 +8,6 @@ data/
 *.db-shm
 .env
 .claude/settings.local.json
+
+# 本機的 compose 覆寫（例如開 port）
+docker-compose.override.yml
