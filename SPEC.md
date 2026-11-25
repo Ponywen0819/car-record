@@ -209,7 +209,7 @@ interface ReminderRule {
 | 日期處理 | **date-fns** | 可以只引入用到的函式 |
 | 圖片壓縮 | **browser-image-compression** | 手機照片動輒數 MB，存入前壓到約 200 KB |
 | Server | **Node.js + Hono** | 輕量、TypeScript 原生；同一個 server 提供網頁檔案和 API |
-| Server 資料庫 | **SQLite（Node 內建 `node:sqlite`）** | 單一檔案，備份只要複製檔案；不需原生編譯套件。所有資料表共用一張通用的 `records` 表（JSON），由 zod 驗證 |
+| Server 資料庫 | **PostgreSQL**（`pg` 驅動，純 JS） | 使用自家既有的 Postgres，用 `pg_dump` 備份；啟動時自動建立／升級資料表。所有資料表共用一張通用的 `records` 表（JSONB），由 zod 驗證。測試用 PGlite（編譯成 WASM 的 Postgres） |
 | 共用型別與驗證 | **zod**（放在 `packages/shared`） | 前端和 server 共用同一份資料定義和驗證規則 |
 | 專案結構 | **pnpm workspace（monorepo）** | web、server、shared 放在同一個 repo |
 | 部署 | **Docker**（單一容器） | 純 HTTP，HTTPS 由外部處理，詳見 4.4 |
@@ -244,13 +244,16 @@ interface ReminderRule {
 │  ├ 提供 build 後的網頁檔案                   │
 │  ├ 同步 API                                 │
 │  └ /data（掛載的 volume）                    │
-│     ├ app.db（SQLite，唯一的資料來源）        │
 │     └ photos/（照片檔案）                    │
+└────────────────────────────────────────────┘
+        │ DATABASE_URL
+┌────────────────────────────────────────────┐
+│ 既有的 PostgreSQL（唯一的資料來源）           │
 └────────────────────────────────────────────┘
 ```
 
 - **Server 是唯一的資料來源**：手機上的資料隨時可以清掉，再從 server 重建
-- 備份只要備份 server 的 `/data` 資料夾
+- 備份：Postgres 用 `pg_dump`，照片備份 `/data` volume
 - 之後的推播、油價中繼也加在同一個 server 上
 
 ### 4.3 專案結構（建議）
@@ -274,7 +277,9 @@ apps/
 │       └── hooks/
 └── server/                  # Node.js HTTP server
     └── src/
-        ├── db.ts            # node:sqlite 儲存層、migration
+        ├── database.ts      # Postgres 連線（pg pool）
+        ├── store.ts         # 儲存層、migration
+        ├── testing/         # 測試用資料庫（PGlite 或 TEST_DATABASE_URL）
         ├── routes/          # sync、photos、healthz
         └── index.ts         # 提供網頁檔案 + API
 packages/
@@ -299,12 +304,12 @@ deploy/
 | 協定 | 純 HTTP |
 | 連接埠 | 可設定，預設 `8080` |
 | 內容 | 前端 `dist/`（靜態檔案）+ `/api/*`（API） |
-| 資料 | `/data` volume：`app.db`（SQLite）、`photos/` |
-| 設定 | 環境變數：`PORT`、`DATA_DIR`、`API_TOKEN`（選用） |
+| 資料 | 紀錄在既有的 PostgreSQL（`DATABASE_URL`）；照片在 `/data` volume 的 `photos/` |
+| 設定 | 環境變數：`DATABASE_URL`（必填）、`PORT`、`DATA_DIR`、`API_TOKEN`（選用） |
 | SPA 路由 | 找不到的路徑一律回傳 `index.html`，讓 `/add/fuel` 這類網址可以直接開啟 |
 | 快取 | `sw.js`、`index.html`、`manifest.webmanifest` 設 `no-cache`，確保更新能生效；帶 hash 的資源檔設長期快取 |
 | 壓縮 | 開啟 gzip（Hono compress middleware） |
-| 健康檢查 | `GET /healthz` 回傳 200 |
+| 健康檢查 | `GET /healthz` 回傳 200；資料庫連不上時回 503 |
 
 > 注意：Service Worker 和加入主畫面的離線功能需要 HTTPS 才會生效。純 HTTP 直連時 App 一樣能用，只是沒有離線功能。
 
@@ -477,7 +482,7 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 
 - [x] 專案建置：monorepo（web + server + shared）
 - [x] 前端：Vite + React + TS + Ionic + Dexie + vite-plugin-pwa
-- [x] Server：Hono + node:sqlite，提供網頁檔案和 API（Docker）
+- [x] Server：Hono + PostgreSQL，提供網頁檔案和 API（Docker）
 - [x] 同步引擎：outbox、push／pull、同步狀態顯示
 - [ ] 部署到自家主機，在 iPhone 上加入主畫面測試（Docker 與實機尚未驗證）
 - [x] 車輛資料（單台）
@@ -501,7 +506,7 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 
 ### 第三階段：選用
 
-- [ ] Server 端定期備份（SQLite 快照 + 照片）
+- [ ] Server 端定期備份（pg_dump + 照片）
 - [ ] Web Push 推播提醒
 - [x] CSV 匯出
 

@@ -2,9 +2,10 @@ import 'fake-indexeddb/auto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { uuidv7 } from '@car-record/shared';
 import { createApp, type ServerApp } from '../../server/src/app';
+import { closeSharedPglite, createTestDatabase, type TestDatabase } from '../../server/src/testing/testDatabase';
 import { createDb, type CarDB } from '../src/db/db';
 import { getRecord, listActive, saveRecord, savePhoto, softDelete } from '../src/db/repository';
 import { createSyncEngine, type SyncEngine } from '../src/sync/engine';
@@ -15,12 +16,13 @@ interface Device {
 }
 
 let dataDir: string;
+let testDb: TestDatabase;
 let server: ServerApp;
 let online = true;
 const devices: CarDB[] = [];
 
-function startServer(apiToken?: string): ServerApp {
-  return createApp({ dataDir, apiToken });
+async function startServer(apiToken?: string): Promise<ServerApp> {
+  return createApp({ dataDir, apiToken, database: await testDb.open() });
 }
 
 /** fetch → in-process Hono app; throws like a real network failure when offline. */
@@ -44,10 +46,11 @@ function device(token?: string): Device {
   return { db, engine };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   online = true;
   dataDir = mkdtempSync(join(tmpdir(), 'car-record-it-'));
-  server = startServer();
+  testDb = await createTestDatabase();
+  server = await startServer();
 });
 
 afterEach(async () => {
@@ -55,9 +58,12 @@ afterEach(async () => {
     db.close();
     await db.delete();
   }
-  server.close();
+  await server.close();
+  await testDb.dispose();
   rmSync(dataDir, { recursive: true, force: true });
 });
+
+afterAll(closeSharedPglite);
 
 async function addVehicleAndFuel(db: CarDB) {
   const vehicle = await saveRecord(db, 'vehicles', { name: '小白', fuelType: 'gasoline' });
@@ -138,13 +144,8 @@ describe('client ↔ real server', () => {
     expect((await getRecord(a.db, 'vehicles', vehicle.id))?.name).toBe('B 改的');
     expect((await getRecord(b.db, 'vehicles', vehicle.id))?.name).toBe('B 改的');
 
-    const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof import('node:sqlite');
-    const raw = new DatabaseSync(join(dataDir, 'app.db'), { readOnly: true });
-    const rows = raw
-      .prepare('SELECT data FROM record_history WHERE table_name = ? AND id = ?')
-      .all('vehicles', vehicle.id) as { data: string }[];
-    raw.close();
-    expect(rows.map((r) => (JSON.parse(r.data) as { name: string }).name)).toContain('A 改的');
+    const history = await server.store.history('vehicles', vehicle.id);
+    expect(history.map((h) => (h.data as { name: string }).name)).toContain('A 改的');
   });
 
   it('uploads photos, drops the local blob, and serves them back', async () => {
@@ -167,8 +168,8 @@ describe('client ↔ real server', () => {
     const { vehicle, fuel } = await addVehicleAndFuel(a.db);
     await a.engine.syncNow();
 
-    server.close();
-    server = startServer();
+    await server.close();
+    server = await startServer();
 
     const fresh = device();
     await fresh.engine.syncNow();
@@ -177,8 +178,8 @@ describe('client ↔ real server', () => {
   });
 
   it('respects the API token', async () => {
-    server.close();
-    server = startServer('secret');
+    await server.close();
+    server = await startServer('secret');
 
     const noToken = device();
     await addVehicleAndFuel(noToken.db);

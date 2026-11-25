@@ -4,11 +4,13 @@ name: Test & publish image
 # The runner needs access to a Docker daemon for the image job
 # (e.g. /var/run/docker.sock mounted into the runner container).
 
+# Git flow (see CLAUDE.md): develop = integration, main = releases (always tagged vX.Y.Z).
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
@@ -33,12 +35,39 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # All tests; server + integration tests use PGlite (in-process Postgres).
       - run: pnpm test
+
+      # Server + integration tests again, against a real Postgres through the pg driver.
+      # The runner itself is a container (Dokploy) talking to the host's Docker daemon, so the
+      # database container joins the runner's network namespace and listens on its 127.0.0.1.
+      - name: Start Postgres
+        id: pg
+        run: |
+          name="car-record-pg-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if docker inspect "$(hostname)" >/dev/null 2>&1; then net="container:$(hostname)"; else net=host; fi
+          docker run -d --rm --name "$name" --network "$net" \
+            -e POSTGRES_PASSWORD=ci postgres:17-alpine -c port=54329
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 60); do
+            if docker exec "$name" pg_isready -h 127.0.0.1 -p 54329 -U postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          docker logs "$name"
+          exit 1
+      - name: Test against Postgres
+        run: pnpm test:postgres
+        env:
+          TEST_DATABASE_URL: postgres://postgres:ci@127.0.0.1:54329/postgres
+      - name: Stop Postgres
+        if: always() && steps.pg.outputs.name != ''
+        run: docker rm -f "${{ steps.pg.outputs.name }}" || true
 
   image:
     needs: test
-    # Pull requests only run the tests; images are published from main and version tags.
-    if: github.event_name != 'pull_request'
+    # Images are published only from main (:latest, :sha-xxx) and version tags (:X.Y.Z).
+    # develop and pull requests only run the tests.
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: [self-hosted, docker]
     permissions:
       contents: read
@@ -49,6 +78,8 @@ jobs:
       - name: Lowercase image name
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -64,6 +95,7 @@ jobs:
           images: ${{ steps.name.outputs.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{raw}}
             type=semver,pattern={{version}}
             type=sha,format=short
 
@@ -71,10 +103,22 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
-          # The home host is X64; add linux/arm64 back (plus docker/setup-qemu-action) if ever needed.
-          platforms: linux/amd64
+          # raspi (the deploy host) is arm64; amd64 kept for x64 machines. Only the runtime stage runs under QEMU (the build stage uses $BUILDPLATFORM).
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Deploy to the home host over SSH once the vX.Y.Z tag image is pushed.
+  deploy:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: Ponywen0819/service-core/.github/workflows/deploy.yml@main
+    with:
+      tag: ${{ github.ref_name }}
+      host: ${{ vars.DEPLOY_HOST }}
+      runs-on: '["self-hosted", "docker"]'
+    secrets:
+      ssh_key: ${{ secrets.DEPLOY_SSH_KEY }}

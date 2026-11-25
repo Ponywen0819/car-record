@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 export interface ServerConfig {
   port: number;
+  /** postgres:// or postgresql:// connection string (required). */
+  databaseUrl: string;
+  /** Photos live in <dataDir>/photos. */
   dataDir: string;
   apiToken?: string;
   /** undefined = don't serve static files (API only). */
@@ -32,6 +35,11 @@ export function loadConfig(
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid PORT: ${JSON.stringify(rawPort)}`);
   }
+  const databaseUrl = (env.DATABASE_URL ?? '').trim();
+  if (!databaseUrl) throw new Error('DATABASE_URL is required, e.g. postgres://user:password@host:5432/car_record');
+  if (!/^postgres(ql)?:\/\/\S+$/.test(databaseUrl)) {
+    throw new Error('DATABASE_URL must be a postgres:// or postgresql:// connection string');
+  }
   const staticDir =
     env.STATIC_DIR === undefined
       ? defaultStaticDir(moduleUrl)
@@ -40,6 +48,7 @@ export function loadConfig(
         : path.resolve(cwd, env.STATIC_DIR);
   return {
     port,
+    databaseUrl,
     dataDir: path.resolve(cwd, env.DATA_DIR || 'data'),
     apiToken: env.API_TOKEN || undefined,
     staticDir,

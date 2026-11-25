@@ -1,5 +1,6 @@
 # Build from the repo root:  docker build -f deploy/Dockerfile -t car-record .
 # Plain HTTP on $PORT. HTTPS / external access is handled outside this container.
+# Needs DATABASE_URL (an existing Postgres); photos are stored in the /data volume.
 
 # ---- build ---------------------------------------------------------------
 # The build output is plain JS (no native modules), so it always runs on the build
@@ -23,11 +24,10 @@ FROM node:22-slim
 ENV NODE_ENV=production \
     PORT=8080 \
     DATA_DIR=/data \
-    STATIC_DIR=/app/public \
-    NODE_OPTIONS=--disable-warning=ExperimentalWarning
+    STATIC_DIR=/app/public
 WORKDIR /app
 
-# The server bundle includes all npm deps; only Node built-ins are needed at runtime.
+# The server bundle includes all npm deps (incl. the pure-JS pg driver); only Node built-ins are needed at runtime.
 COPY --from=build /app/apps/server/dist ./dist
 COPY --from=build /app/apps/web/dist ./public
 
@@ -36,6 +36,7 @@ USER node
 VOLUME /data
 EXPOSE 8080
 
+# /healthz also pings Postgres (503 while the database is unreachable).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
