@@ -45,7 +45,7 @@
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
-5. CI 會推送 image：合併到 `main` 時推 `ghcr.io/ponywen0819/car-record:latest`，推送 tag 時推 `:X.Y.Z`。
+5. CI 會推送 image 並自動部署：合併到 `main` 時推 `ghcr.io/ponywen0819/car-record:latest`；推送 tag 時推 `:vX.Y.Z` 與 `:X.Y.Z`，接著透過 `Ponywen0819/service-core` 的共用 deploy workflow 自動部署到 host。
 
 tag 一旦推上去就不要刪除或移動；有問題就發新的 PATCH 版本。
 
@@ -54,6 +54,7 @@ tag 一旦推上去就不要刪除或移動；有問題就發新的 PATCH 版本
 - 全部跑在 self-hosted runner（labels：`self-hosted`、`docker`）上。
 - 推到 `develop`、`main`，以及 PR：跑型別檢查和全部測試，再對暫時啟動的真 Postgres 容器跑一次 server 和整合測試。
 - 只有 `main` 和 `v*` tag 會建置並推送 image。
+- 推送 `v*` tag 時，`deploy` job 會在 image 推送完成後呼叫 `Ponywen0819/service-core/.github/workflows/deploy.yml@main` 自動部署到 host。
 - repo 是公開的：來自 fork 的 PR 不會在 self-hosted runner 上執行。
 
 ## 開發規則

@@ -93,6 +93,7 @@ jobs:
           images: ${{ steps.name.outputs.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{raw}}
             type=semver,pattern={{version}}
             type=sha,format=short
 
@@ -107,3 +108,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Deploy to the home host over SSH once the vX.Y.Z tag image is pushed.
+  deploy:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: Ponywen0819/service-core/.github/workflows/deploy.yml@main
+    with:
+      tag: ${{ github.ref_name }}
+      host: ${{ vars.DEPLOY_HOST }}
+      runs-on: '["self-hosted", "docker"]'
+    secrets:
+      ssh_key: ${{ secrets.DEPLOY_SSH_KEY }}
