@@ -69,7 +69,7 @@ docker compose up -d --build
 
 ## CI
 
-`.github/workflows/docker-publish.yml` 全部跑在自架 runner（labels：`self-hosted`、`docker`）上。推到 `develop`、`main` 和 PR 都會跑測試（先用 PGlite 跑全部，再啟動一個暫時的 `postgres:17` 容器，對真正的 Postgres 跑 server 和整合測試）；只有 `main` 和 `v*` tag 會在測試通過後建置 `linux/amd64` image 並推到 `ghcr.io/ponywen0819/car-record`，而 `v*` tag 在 image 推送完成後還會自動部署到 host。分支與版本規則見 [CLAUDE.md](CLAUDE.md)。
+`.github/workflows/docker-publish.yml` 全部跑在自架 runner（labels：`self-hosted`、`docker`）上。推到 `develop`、`main` 和 PR 都會跑測試（先用 PGlite 跑全部，再啟動一個暫時的 `postgres:17` 容器，對真正的 Postgres 跑 server 和整合測試）；只有 `main` 和 `v*` tag 會在測試通過後建置 `linux/amd64` 與 `linux/arm64`（raspi 用）的多架構 image 並推到 `ghcr.io/ponywen0819/car-record`，而 `v*` tag 在 image 推送完成後還會自動部署到 host。分支與版本規則見 [CLAUDE.md](CLAUDE.md)。
 
 - runner 容器要能使用 Docker（例如掛載 `/var/run/docker.sock`），才能建置 image
 - repo 是公開的：來自 fork 的 PR 不會在自架 runner 上執行
