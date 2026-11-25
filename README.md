@@ -38,11 +38,24 @@ pnpm build        # apps/web/dist + apps/server/dist/main.js
 pnpm start        # node apps/server/dist/main.js
 ```
 
-或用 Docker（在 `deploy/` 資料夾裡）。`docker-compose.yml` 不寫死任何設定，`DATABASE_URL`、`API_TOKEN` 都從環境變數讀取：用 Dokploy 時填在 App 的 Environment 分頁；手動部署時把 `deploy/.env.example` 複製成 `deploy/.env`（已被 git 忽略）再填入。沒設定 `DATABASE_URL` 時 compose 會直接報錯。
+或用 Docker（在 `deploy/` 資料夾裡）。`docker-compose.yml` 不寫死任何設定，`DATABASE_URL`、`API_TOKEN` 都從 `deploy/.env`（已被 git 忽略，由 `deploy/.env.example` 複製後填入）讀取；沒設定 `DATABASE_URL` 時 compose 會直接報錯。本機自建映像可用：
 
 ```bash
 docker compose up -d --build
 ```
+
+### 自動部署與一次性設定
+
+正式環境採用推送式自動部署（完整設計與疑難排解見 [`Ponywen0819/service-core` 的 `deploy/README.md`](https://github.com/Ponywen0819/service-core/blob/main/deploy/README.md)）：
+
+- **自動部署流程**：推送 `vX.Y.Z` tag 後，CI 會建置並推送 `:vX.Y.Z` 映像，接著呼叫 `service-core` 的共用 deploy workflow，透過 SSH 連上 host 執行 `deploy/deploy.sh vX.Y.Z`（將 repo 切到該 tag、拉映像、更新 `deploy/.env` 的 `APP_TAG`、啟動容器並確認 healthy）。
+- **手動重部署／退版**：到 GitHub `Actions → deploy → Run workflow` 輸入已建過映像的 `vX.Y.Z` tag（此 workflow 合併至預設分支 `main` 後才會顯示），或直接在 host 執行 `/root/car-record/deploy/deploy.sh vX.Y.Z`。
+- **一次性設定**：
+  - 在 host 上 clone 此 repo（例如 `git clone https://github.com/Ponywen0819/car-record /root/car-record`）。
+  - 把 `deploy/.env.example` 複製成 host 上的 `deploy/.env`（`chmod 600`），填入 `DATABASE_URL`（及選填的 `API_TOKEN`）；`APP_TAG` 由 `deploy/deploy.sh` 自動維護。
+  - 產生部署專用的無 passphrase `ed25519` 金鑰，將公鑰加進 host 的 `/root/.ssh/authorized_keys`，前綴限制寫成：`command="/root/car-record/deploy/deploy.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty`。
+  - 在 GitHub repo（或 `production` environment）設定 Actions variable `DEPLOY_HOST`（填 `root@<固定 IP>`，runner 容器解析不到 `.local`）與 secret `DEPLOY_SSH_KEY`（部署私鑰完整內容）。
+  - 第一次部署先在 host 手動執行（舊版還沒有 `deploy/deploy.sh`）：`cd /root/car-record && git fetch --tags && git checkout --detach vX.Y.Z && deploy/deploy.sh vX.Y.Z`。
 
 | 環境變數 | 預設值 | 說明 |
 |---|---|---|
@@ -56,7 +69,7 @@ docker compose up -d --build
 
 ## CI
 
-`.github/workflows/docker-publish.yml` 全部跑在自架 runner（labels：`self-hosted`、`docker`）上。推到 `develop`、`main` 和 PR 都會跑測試（先用 PGlite 跑全部，再啟動一個暫時的 `postgres:17` 容器，對真正的 Postgres 跑 server 和整合測試）；只有 `main` 和 `v*` tag 會在測試通過後建置 `linux/amd64` image 並推到 `ghcr.io/ponywen0819/car-record`。分支與版本規則見 [CLAUDE.md](CLAUDE.md)。
+`.github/workflows/docker-publish.yml` 全部跑在自架 runner（labels：`self-hosted`、`docker`）上。推到 `develop`、`main` 和 PR 都會跑測試（先用 PGlite 跑全部，再啟動一個暫時的 `postgres:17` 容器，對真正的 Postgres 跑 server 和整合測試）；只有 `main` 和 `v*` tag 會在測試通過後建置 `linux/amd64` image 並推到 `ghcr.io/ponywen0819/car-record`，而 `v*` tag 在 image 推送完成後還會自動部署到 host。分支與版本規則見 [CLAUDE.md](CLAUDE.md)。
 
 - runner 容器要能使用 Docker（例如掛載 `/var/run/docker.sock`），才能建置 image
 - repo 是公開的：來自 fork 的 PR 不會在自架 runner 上執行
