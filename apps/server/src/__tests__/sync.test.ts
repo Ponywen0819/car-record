@@ -293,13 +293,4 @@ describe('persistence', () => {
     const next = await push(second.app, [mutation('vehicles', vehicle())]);
     expect(next.body.results[0].rev).toBe(2);
   });
-
-  it('also works with a not-yet-existing nested dataDir', async () => {
-    const path = await import('node:path');
-    const { tmpDir } = await import('./helpers');
-    const dataDir = path.join(tmpDir(), 'a', 'b');
-    const { app } = await makeApp({ dataDir });
-    const { body } = await push(app, [mutation('vehicles', vehicle())]);
-    expect(body.results[0].status).toBe('applied');
-  });
 });

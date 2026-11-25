@@ -48,6 +48,8 @@ const entryCommon = vehicleScoped.extend({
   date: isoDateSchema,
   cost: nonNeg.optional(),
   note: z.string().optional(),
+  /** Taiwan e-invoice track + number, e.g. 'QZ87654321'. */
+  invoiceNumber: z.string().regex(/^[A-Z]{2}\d{8}$/).optional(),
   photoIds: z.array(z.string().min(1)).optional(),
 });
 

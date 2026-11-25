@@ -117,3 +117,72 @@ describe('useExpenseForm', () => {
     expect(draft).not.toHaveProperty('recurring');
   });
 });
+
+describe('invoice scan', () => {
+  const fill = { invoiceNumber: 'PK24681357', date: '2026-11-21', total: 120, note: '停車費 ×3 40元' };
+
+  it('fills the date, the amount and the note from the invoice, keeping the category', () => {
+    const { result } = setup();
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+    expect(result.current.values).toMatchObject({
+      date: '2026-11-21',
+      cost: '120',
+      note: '停車費 ×3 40元',
+      invoiceNumber: 'PK24681357',
+      category: 'toll',
+    });
+  });
+
+  it('appends the item list to an existing note', () => {
+    const { result } = setup();
+    act(() => result.current.setField('note', '公司聚餐'));
+    act(() => {
+      result.current.applyInvoice(fill);
+    });
+    expect(result.current.values.note).toBe('公司聚餐\n停車費 ×3 40元');
+  });
+
+  it('saves the invoice number with the record', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.applyInvoice(fill);
+    });
+    await act(async () => {
+      await result.current.submit();
+    });
+    const [, table, draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(table).toBe('expenses');
+    expect(draft).toMatchObject({ date: '2026-11-21', cost: 120, note: '停車費 ×3 40元', invoiceNumber: 'PK24681357' });
+  });
+
+  it('refuses an invoice already used by another expense', () => {
+    const used = e({ id: 'e-used', date: '2026-11-05', invoiceNumber: 'PK24681357' });
+    const { result } = setup({ expenseRecords: [used] });
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: false, duplicateOf: used });
+    expect(result.current.values.cost).toBe('');
+  });
+});
+
+describe('photos', () => {
+  it('no longer has a photo field on the form', () => {
+    const { result } = setup();
+    expect('photoIds' in result.current.values).toBe(false);
+  });
+
+  it('keeps photos already attached to an edited expense', async () => {
+    const record = e({ id: 'e0', photoIds: ['p1'] });
+    const { result } = setup({ record });
+    await act(async () => {
+      await result.current.submit();
+    });
+    expect(vi.mocked(repo.saveRecord).mock.calls[0]![2]).toMatchObject({ id: 'e0', photoIds: ['p1'] });
+  });
+});

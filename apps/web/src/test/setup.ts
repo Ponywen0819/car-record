@@ -11,7 +11,8 @@ afterEach(() => {
 });
 
 // jsdom lacks matchMedia, which Ionic queries for dark mode / platform detection.
-if (!window.matchMedia) {
+// (Tests marked `@vitest-environment node` have no window at all.)
+if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
       matches: false,

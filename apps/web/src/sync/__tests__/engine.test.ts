@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PUSH_MAX_MUTATIONS, type Vehicle } from '@car-record/shared';
 import { META_CURSOR, META_LAST_SYNC_AT } from '../../db/db';
-import { importRecords, saveRecord, savePhoto } from '../../db/repository';
-import { fuelDraft, testBlob, vehicleDraft } from '../../db/__tests__/fixtures';
+import { importRecords, saveRecord } from '../../db/repository';
+import { fuelDraft, vehicleDraft } from '../../db/__tests__/fixtures';
 import { backoffDelay, createSyncEngine } from '../engine';
 import { makeHarness, recorder, type Harness } from './helpers';
 
@@ -245,9 +245,8 @@ describe('push results', () => {
     const { db, server, engine } = setup({ getToken: () => token });
     server.token = 'secret';
     await saveRecord(db, 'vehicles', vehicleDraft(), 1);
-    await savePhoto(db, testBlob(), 1);
     expect((await engine.syncNow()).state).toBe('idle');
-    expect(server.requests.length).toBe(3);
+    expect(server.requests.length).toBe(2);
     expect(server.requests.every((r) => r.headers['authorization'] === 'Bearer secret')).toBe(true);
 
     token = undefined;
@@ -413,41 +412,13 @@ describe('pull', () => {
   });
 });
 
-describe('photos', () => {
-  it('uploads pending photos with their content type, then drops the blob', async () => {
-    const { db, server, engine } = setup();
-    const id = await savePhoto(db, testBlob('JPEGDATA', 'image/jpeg'), 1);
-    const status = await engine.syncNow();
-    expect(status).toMatchObject({ state: 'idle', pending: 0 });
-    const [put] = server.requests.filter((r) => r.method === 'PUT');
-    expect(put!.path).toBe(`/api/photos/${id}`);
-    expect(put!.headers['content-type']).toBe('image/jpeg');
-    expect(new TextDecoder().decode(server.photos.get(id)!.bytes)).toBe('JPEGDATA');
-    const entry = await db.photos.get(id);
-    expect(entry?.status).toBe('uploaded');
-    expect(entry?.blob).toBeUndefined();
-  });
-
-  it('keeps the photo pending when the upload fails', async () => {
-    const { db, server, engine } = setup();
-    const id = await savePhoto(db, testBlob(), 1);
-    server.serverError = 500;
-    const status = await engine.syncNow();
-    expect(status.pending).toBe(1);
-    const entry = await db.photos.get(id);
-    expect(entry?.status).toBe('pending');
-    expect(entry?.blob).toBeDefined();
-  });
-});
-
 describe('status', () => {
-  it('pending counts outbox + photos; failed counts failed outbox entries', async () => {
+  it('pending counts pending outbox entries; failed counts failed outbox entries', async () => {
     const { db, server, engine, net } = setup();
     net.online = false;
     await saveRecord(db, 'vehicles', vehicleDraft(), 1);
     await saveRecord(db, 'vehicles', vehicleDraft(), 2);
-    await savePhoto(db, testBlob(), 3);
-    expect(await engine.syncNow()).toMatchObject({ pending: 3, failed: 0, state: 'offline' });
+    expect(await engine.syncNow()).toMatchObject({ pending: 2, failed: 0, state: 'offline' });
 
     net.online = true;
     let n = 0;

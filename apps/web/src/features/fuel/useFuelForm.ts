@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { FuelRecord } from '@car-record/shared';
-import { lastValue, solvePrice, type PriceInput } from '../../domain';
+import { lastValue, solvePrice, type FuelInvoiceFill, type PriceInput } from '../../domain';
 import { saveRecord, type Draft } from '../../db/repository';
 import { compact, formatInputNumber, isBlank, parseDecimal } from '../../lib/format';
 import {
@@ -27,8 +27,10 @@ export interface FuelFormValues {
   station: string;
   grade: string;
   note: string;
-  photoIds: string[];
+  invoiceNumber: string;
 }
+
+export type ApplyInvoiceResult = { ok: true } | { ok: false; duplicateOf: FuelRecord };
 
 export interface UseFuelFormOptions extends EntryFormContext {
   fuelRecords: FuelRecord[];
@@ -95,7 +97,7 @@ function initialValues(o: UseFuelFormOptions): FuelFormValues {
       station: r.station ?? '',
       grade: r.grade ?? '',
       note: r.note ?? '',
-      photoIds: r.photoIds ?? [],
+      invoiceNumber: r.invoiceNumber ?? '',
     };
   }
   const d = o.duplicateOf;
@@ -109,7 +111,7 @@ function initialValues(o: UseFuelFormOptions): FuelFormValues {
     station: d?.station ?? lastValue(o.fuelRecords, 'station') ?? '',
     grade: d?.grade ?? lastValue(o.fuelRecords, 'grade') ?? '',
     note: d?.note ?? '',
-    photoIds: [],
+    invoiceNumber: '',
   };
 }
 
@@ -140,6 +142,42 @@ export function useFuelForm(o: UseFuelFormOptions) {
     [values, price, setValues, setErrors, guard, form],
   );
 
+  const applyInvoice = useCallback(
+    (fill: FuelInvoiceFill): ApplyInvoiceResult => {
+      const duplicate = o.fuelRecords.find(
+        (r) =>
+          (r.deletedAt === undefined || r.deletedAt === null) &&
+          r.id !== o.record?.id &&
+          r.invoiceNumber === fill.invoiceNumber,
+      );
+      if (duplicate) return { ok: false, duplicateOf: duplicate };
+
+      setValues((prev) => ({
+        ...prev,
+        date: fill.date,
+        amount: formatInputNumber(fill.amount),
+        unitPrice: formatInputNumber(fill.unitPrice),
+        total: formatInputNumber(fill.total),
+        grade: fill.grade !== undefined ? fill.grade : prev.grade,
+        invoiceNumber: fill.invoiceNumber,
+      }));
+      setPrice({ queue: ['total', 'amount'], derived: null });
+      guard.reset();
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.date;
+        delete next.amount;
+        delete next.unitPrice;
+        delete next.total;
+        delete next.grade;
+        delete next.invoiceNumber;
+        return next;
+      });
+      return { ok: true };
+    },
+    [o.fuelRecords, o.record?.id, setValues, guard, setErrors],
+  );
+
   const submit = useCallback(async (): Promise<SubmitResult<FuelRecord>> => {
     const errors: Record<string, string> = {};
     if (!DATE_RE.test(values.date)) errors.date = '請選擇日期';
@@ -154,6 +192,7 @@ export function useFuelForm(o: UseFuelFormOptions) {
     if (!guard.allow(odometer, values.date)) return { ok: false, reason: 'warning' };
 
     const solved = solvePrice({ amount, unitPrice, total });
+    const legacyPhotos = o.record?.photoIds && o.record.photoIds.length > 0 ? o.record.photoIds : undefined;
     const draft = compact({
       id: o.record?.id,
       createdAt: o.record?.createdAt,
@@ -166,8 +205,9 @@ export function useFuelForm(o: UseFuelFormOptions) {
       isFull: values.isFull,
       station: trimOrUndefined(values.station),
       grade: trimOrUndefined(values.grade),
+      invoiceNumber: values.invoiceNumber || undefined,
       note: trimOrUndefined(values.note),
-      photoIds: values.photoIds.length > 0 ? values.photoIds : undefined,
+      photoIds: legacyPhotos,
     });
     return run(() => saveRecord(o.db, 'fuel', draft as Draft<'fuel'>, o.now?.()));
   }, [values, noun, setErrors, guard, o, run]);
@@ -175,6 +215,7 @@ export function useFuelForm(o: UseFuelFormOptions) {
   return {
     values,
     setField,
+    applyInvoice,
     errors: form.errors,
     derived: price.derived,
     warning: guard.warning,

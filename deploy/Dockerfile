@@ -1,6 +1,6 @@
 # Build from the repo root:  docker build -f deploy/Dockerfile -t car-record .
 # Plain HTTP on $PORT. HTTPS / external access is handled outside this container.
-# Needs DATABASE_URL (an existing Postgres); photos are stored in the /data volume.
+# Needs DATABASE_URL (an existing Postgres).
 
 # ---- build ---------------------------------------------------------------
 # The build output is plain JS (no native modules), so it always runs on the build
@@ -23,7 +23,6 @@ RUN pnpm build
 FROM node:22-slim
 ENV NODE_ENV=production \
     PORT=8080 \
-    DATA_DIR=/data \
     STATIC_DIR=/app/public
 WORKDIR /app
 
@@ -31,9 +30,7 @@ WORKDIR /app
 COPY --from=build /app/apps/server/dist ./dist
 COPY --from=build /app/apps/web/dist ./public
 
-RUN mkdir -p /data && chown node:node /data
 USER node
-VOLUME /data
 EXPOSE 8080
 
 # /healthz also pings Postgres (503 while the database is unreachable).

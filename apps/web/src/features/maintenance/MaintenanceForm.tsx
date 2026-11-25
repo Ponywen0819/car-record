@@ -6,8 +6,9 @@ import { useVehicleContext } from '../../app/vehicleContext';
 import { ChipSelect } from '../../components/ChipSelect';
 import { FormLayout, MoreFieldsButton } from '../../components/FormLayout';
 import { NumberInput, TextArea, TextInput } from '../../components/NumberInput';
-import { PhotoField } from '../../components/PhotoField';
 import { formatKm, formatNumber } from '../../lib/format';
+import { ReceiptScanButton } from '../forms/ReceiptScanButton';
+import { scanReceipt } from '../forms/receiptScan';
 import { useFormChrome } from '../forms/useFormChrome';
 import { dateHint } from '../fuel/FuelForm';
 import { useMaintenanceForm } from './useMaintenanceForm';
@@ -30,6 +31,19 @@ export function MaintenanceForm(props: FormProps<Extract<FormProps['request'], {
   const chrome = useFormChrome(props, form, form.isEdit ? '已更新保養紀錄' : '已儲存保養紀錄');
   const { values, setField, errors } = form;
 
+  const onScan = async (file: File) => {
+    const res = await scanReceipt(file);
+    if (!res.ok) return { ok: false as const, message: res.message };
+    const applied = form.applyInvoice(res.fill);
+    if (!applied.ok) {
+      return { ok: false as const, message: `這張發票已在 ${applied.duplicateOf.date} 記錄過` };
+    }
+    return {
+      ok: true as const,
+      message: `已從發票 ${res.fill.invoiceNumber} 填入日期、金額，品項寫在備註，請選擇保養項目`,
+    };
+  };
+
   const shops = useMemo(
     () => Array.from(new Set(data.maintenance.map((m) => m.shop).filter((s): s is string => !!s))).slice(0, 20),
     [data.maintenance],
@@ -46,6 +60,7 @@ export function MaintenanceForm(props: FormProps<Extract<FormProps['request'], {
       warning={form.warning}
       error={chrome.saveError}
     >
+      <ReceiptScanButton onScan={onScan} />
       <div className="field-row">
         <TextInput label="日期" type="date" value={values.date} onChange={(v) => setField('date', v)} error={errors.date} hint={dateHint(values.date, today)} />
         <NumberInput
@@ -120,10 +135,9 @@ export function MaintenanceForm(props: FormProps<Extract<FormProps['request'], {
             </div>
           ) : null}
           <TextArea label="備註" value={values.note} onChange={(v) => setField('note', v)} />
-          <PhotoField db={db} photoIds={values.photoIds} onChange={(ids) => setField('photoIds', ids)} />
         </>
       ) : (
-        <MoreFieldsButton label="逐項費用、備註、照片" onClick={chrome.expand} />
+        <MoreFieldsButton label="逐項費用、備註" onClick={chrome.expand} />
       )}
     </FormLayout>
   );

@@ -54,6 +54,7 @@ export const MIGRATIONS: readonly (readonly string[])[] = [
        updated_at   BIGINT  NOT NULL
      )`,
   ],
+  ['DROP TABLE IF EXISTS photos'],
 ];
 
 export type ApplyResult = { status: 'applied' | 'duplicate'; rev: number };
@@ -62,12 +63,6 @@ export interface HistoryEntry {
   rev: number;
   data: Record<string, unknown>;
   replacedAt: number;
-}
-
-export interface PhotoMeta {
-  id: string;
-  contentType: string;
-  size: number;
 }
 
 export interface PullPage {
@@ -178,28 +173,6 @@ export class Store {
       [table, id],
     );
     return rows.map((r) => ({ rev: r.rev, data: r.data, replacedAt: r.replaced_at }));
-  }
-
-  async getPhoto(id: string): Promise<PhotoMeta | undefined> {
-    const { rows } = await this.db.query<{ id: string; content_type: string; size: number }>(
-      'SELECT id, content_type, size FROM photos WHERE id = $1',
-      [id],
-    );
-    const row = rows[0];
-    return row && { id: row.id, contentType: row.content_type, size: row.size };
-  }
-
-  /** Upsert photo metadata; returns true if the photo is new. */
-  async savePhoto(id: string, contentType: string, size: number): Promise<boolean> {
-    const now = this.now();
-    const { rows } = await this.db.query<{ inserted: boolean }>(
-      `INSERT INTO photos (id, content_type, size, created_at, updated_at) VALUES ($1, $2, $3, $4, $4)
-       ON CONFLICT (id) DO UPDATE SET
-         content_type = excluded.content_type, size = excluded.size, updated_at = excluded.updated_at
-       RETURNING (xmax = 0) AS inserted`,
-      [id, contentType, size, now],
-    );
-    return rows[0]!.inserted;
   }
 
   close(): Promise<void> {

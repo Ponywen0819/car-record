@@ -6,10 +6,8 @@ import {
   importRecords,
   listActive,
   localWrites,
-  photoUrl,
   restoreRecord,
   saveRecord,
-  savePhoto,
   softDelete,
 } from '../repository';
 import {
@@ -18,7 +16,6 @@ import {
   fuelDraft,
   makeTestDb,
   reminderDraft,
-  testBlob,
   vehicleDraft,
 } from './fixtures';
 
@@ -297,47 +294,5 @@ describe('importRecords', () => {
   it('returns 0 for an empty import', async () => {
     expect(await importRecords(db, {})).toBe(0);
     expect(await db.outbox.count()).toBe(0);
-  });
-});
-
-describe('photos', () => {
-  it('savePhoto stores the blob as pending and returns a uuidv7 id', async () => {
-    const listener = vi.fn();
-    localWrites.addEventListener('write', listener);
-    let id: string;
-    try {
-      id = await savePhoto(db, testBlob('abc', 'image/webp'), 7_000);
-    } finally {
-      localWrites.removeEventListener('write', listener);
-    }
-    expect(id).toMatch(UUID_V7);
-    const entry = await db.photos.get(id);
-    expect(entry).toMatchObject({ id, contentType: 'image/webp', status: 'pending', createdAt: 7_000 });
-    expect(await entry!.blob!.text()).toBe('abc');
-    expect(listener).toHaveBeenCalledTimes(1);
-  });
-
-  it('savePhoto falls back to application/octet-stream when the blob has no type', async () => {
-    const id = await savePhoto(db, testBlob('abc', ''), 1);
-    expect((await db.photos.get(id))?.contentType).toBe('application/octet-stream');
-  });
-
-  it('photoUrl returns an object URL while the blob is local', async () => {
-    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake-url');
-    const id = await savePhoto(db, testBlob(), 1);
-    expect(await photoUrl(db, id, 'https://example.test')).toBe('blob:fake-url');
-    expect(create).toHaveBeenCalledTimes(1);
-  });
-
-  it('photoUrl returns the server URL once uploaded (blob dropped)', async () => {
-    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake-url');
-    await db.photos.put({ id: 'p1', contentType: 'image/jpeg', status: 'uploaded', createdAt: 1 });
-    expect(await photoUrl(db, 'p1', 'https://example.test')).toBe('https://example.test/api/photos/p1');
-    expect(await photoUrl(db, 'p1')).toBe('/api/photos/p1');
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('photoUrl returns the server URL for photos unknown locally (e.g. synced from another device)', async () => {
-    expect(await photoUrl(db, 'remote-photo', '')).toBe('/api/photos/remote-photo');
   });
 });

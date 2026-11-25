@@ -31,16 +31,6 @@ export interface OutboxEntry {
   lastError?: string;
 }
 
-export interface PhotoEntry {
-  id: string;
-  /** Present until uploaded; dropped after a successful upload to save space. */
-  blob?: Blob;
-  contentType: string;
-  /** Strings, not booleans — booleans are not valid IndexedDB keys. */
-  status: 'pending' | 'uploaded';
-  createdAt: number;
-}
-
 export interface MetaEntry {
   key: string;
   value: unknown;
@@ -54,7 +44,6 @@ export class CarDB extends Dexie {
   reminderRules!: Table<ReminderRule, string>;
   deadlines!: Table<Deadline, string>;
   outbox!: Table<OutboxEntry, number>;
-  photos!: Table<PhotoEntry, string>;
   meta!: Table<MetaEntry, string>;
 
   constructor(name = 'car-record') {
@@ -69,6 +58,9 @@ export class CarDB extends Dexie {
       outbox: '++seq, &mutationId, recordId, status',
       photos: 'id, status',
       meta: 'key',
+    });
+    this.version(2).stores({
+      photos: null,
     });
   }
 
