@@ -44,6 +44,16 @@ pnpm start        # node apps/server/dist/main.js
 docker compose up -d --build
 ```
 
+正式環境不對 host 開 port：對外入口是 `service-core` 的 gateway（Cloudflare Tunnel → nginx），網址 `https://car-record.ponygames.net`，要先過 Cloudflare Access 登入。
+容器加入 gateway 建立的 `gw-car-record` 網路（別名 `car-record`），所以要先部署 gateway。本機沒有 gateway 時，用不進 git 的 `deploy/docker-compose.override.yml` 開 port：
+
+```yaml
+services:
+  car-record:
+    ports: ["8080:8080"]
+    networks: !reset [default]
+```
+
 ### 自動部署與一次性設定
 
 正式環境採用推送式自動部署（完整設計與疑難排解見 [`Ponywen0819/service-core` 的 `deploy/README.md`](https://github.com/Ponywen0819/service-core/blob/main/deploy/README.md)）：

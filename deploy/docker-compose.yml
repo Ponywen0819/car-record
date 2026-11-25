@@ -19,6 +19,18 @@
 #                 (a host the container can reach — not localhost)
 #   API_TOKEN     optional; when set, /api/* needs "Authorization: Bearer <token>"
 #   APP_TAG       maintained automatically by deploy/deploy.sh (defaults to latest)
+#
+# External access goes through the shared gateway (Ponywen0819/service-core: Cloudflare Tunnel -> nginx):
+#   https://car-record.ponygames.net, behind Cloudflare Access. No port is published on the host; the gateway
+#   reaches this container on the gw-car-record network by the alias car-record (gateway/nginx/conf.d/car-record.conf).
+#   gw-car-record is created by the gateway, so the gateway must be deployed first.
+#   For local use without the gateway, add a docker-compose.override.yml with `ports: ["8080:8080"]`
+#   and `networks: !reset [default]` (the override file is not tracked by git).
+
+# Fixed project name: this file lives in deploy/, so the default name would be "deploy", which other repos
+# using the same layout would share (and `up --remove-orphans` would remove each other's containers).
+name: car-record
+
 services:
   car-record:
     image: ghcr.io/ponywen0819/car-record:${APP_TAG:-latest}
@@ -27,10 +39,16 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: car-record
     pull_policy: always
-    ports:
-      - "8080:8080"
+    # Only the gateway's nginx is on gw-car-record; default is for outbound traffic (Postgres).
+    networks:
+      gw-car-record: {aliases: [car-record]}
+      default: {}
     environment:
       PORT: "8080"
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (see the comment at the top of this file)}
       API_TOKEN: ${API_TOKEN:-}
     restart: unless-stopped
+
+networks:
+  gw-car-record:
+    external: true
