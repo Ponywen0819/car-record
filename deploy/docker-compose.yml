@@ -11,6 +11,7 @@
 #   CREATE ROLE car_record LOGIN PASSWORD 'change-me';
 #   CREATE DATABASE car_record OWNER car_record;
 # Tables are created / migrated automatically on startup.
+# All data lives in Postgres; back up with: pg_dump "$DATABASE_URL" > car-record.sql
 #
 # Settings go in deploy/.env on the host (cp .env.example .env && chmod 600 .env).
 # Nothing secret is stored here:
@@ -28,19 +29,8 @@ services:
     pull_policy: always
     ports:
       - "8080:8080"
-    volumes:
-      # Photos live here; all records live in Postgres. Back up both
-      # (records: pg_dump "$DATABASE_URL" > car-record.sql).
-      # A named volume (not a ./data bind mount) so it is created owned by the
-      # container's non-root `node` user. Back it up with:
-      #   docker run --rm -v car-record-data:/data -v "$PWD":/backup busybox tar czf /backup/car-record.tgz -C /data .
-      - car-record-data:/data
     environment:
       PORT: "8080"
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (see the comment at the top of this file)}
       API_TOKEN: ${API_TOKEN:-}
     restart: unless-stopped
-
-volumes:
-  car-record-data:
-    name: car-record-data

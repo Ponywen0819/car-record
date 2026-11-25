@@ -16,7 +16,6 @@
     "@car-record/shared": "workspace:*",
     "@ionic/react": "^8.8.21",
     "@ionic/react-router": "^8.8.21",
-    "browser-image-compression": "^2.0.2",
     "chart.js": "^4.6.1",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.7",

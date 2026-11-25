@@ -174,3 +174,101 @@ describe('submit', () => {
     expect(draft).toMatchObject({ id: 'm9', createdAt: 9 });
   });
 });
+
+describe('invoice scan', () => {
+  const fill = { invoiceNumber: 'MK13572468', date: '2026-11-20', total: 1830, note: '機油 ×4 320元、工資 ×1 300元' };
+
+  it('fills the date, the total cost and the note from the invoice', () => {
+    const { result } = setup();
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+    expect(result.current.values).toMatchObject({
+      date: '2026-11-20',
+      cost: '1830',
+      note: '機油 ×4 320元、工資 ×1 300元',
+      invoiceNumber: 'MK13572468',
+      items: ['engine_oil', 'oil_filter'],
+      shop: '阿明保養廠',
+    });
+  });
+
+  it('appends the item list to a note that is already there', () => {
+    const { result } = setup();
+    act(() => result.current.setField('note', '順便檢查煞車'));
+    act(() => {
+      result.current.applyInvoice(fill);
+    });
+    expect(result.current.values.note).toBe('順便檢查煞車\n機油 ×4 320元、工資 ×1 300元');
+  });
+
+  it('keeps the note when the invoice has no items', () => {
+    const { result } = setup();
+    act(() => result.current.setField('note', '保固內'));
+    act(() => {
+      result.current.applyInvoice({ ...fill, note: '' });
+    });
+    expect(result.current.values.note).toBe('保固內');
+  });
+
+  it('saves the invoice number with the record', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.applyInvoice(fill);
+    });
+    await act(async () => {
+      await result.current.submit();
+    });
+    const [, table, draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(table).toBe('maintenance');
+    expect(draft).toMatchObject({ date: '2026-11-20', cost: 1830, invoiceNumber: 'MK13572468' });
+  });
+
+  it('refuses an invoice already used by another maintenance record', () => {
+    const used = m({ id: 'm-used', date: '2026-11-02', invoiceNumber: 'MK13572468' });
+    const { result } = setup({ maintenanceRecords: [used] });
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: false, duplicateOf: used });
+    expect(result.current.values.cost).toBe('');
+    expect(result.current.values.invoiceNumber).toBe('');
+  });
+
+  it('allows the invoice of the record being edited and ignores deleted records', () => {
+    const record = m({ id: 'm0', invoiceNumber: 'MK13572468' });
+    const gone = m({ id: 'm-gone', invoiceNumber: 'MK13572468', deletedAt: 5 });
+    const { result } = setup({ record, maintenanceRecords: [record, gone] });
+    expect(result.current.values.invoiceNumber).toBe('MK13572468');
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+  });
+});
+
+describe('photos', () => {
+  it('no longer has a photo field on the form', () => {
+    const { result } = setup();
+    expect('photoIds' in result.current.values).toBe(false);
+  });
+
+  it('keeps photos already attached to an edited record and adds none to new ones', async () => {
+    const record = m({ id: 'm0', photoIds: ['p1'] });
+    const edit = setup({ record });
+    await act(async () => {
+      await edit.result.current.submit();
+    });
+    expect(vi.mocked(repo.saveRecord).mock.calls[0]![2]).toMatchObject({ id: 'm0', photoIds: ['p1'] });
+
+    const created = setup();
+    await act(async () => {
+      await created.result.current.submit();
+    });
+    expect(vi.mocked(repo.saveRecord).mock.calls[1]![2]).not.toHaveProperty('photoIds');
+  });
+});

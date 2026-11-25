@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import type { Database } from '../database';
 import { MIGRATIONS } from '../store';
-import { makeApp, mutation, pull, push, testDatabase, tmpDir, vehicle } from './helpers';
+import { makeApp, mutation, pull, push, testDatabase, vehicle } from './helpers';
 
 /** A Database whose every query fails, like a Postgres server that went away. */
 function brokenDatabase(): Database {
@@ -22,7 +22,6 @@ describe('schema migrations', () => {
     expect(tables.map((t) => t.table_name)).toEqual([
       'applied_mutations',
       'meta',
-      'photos',
       'record_history',
       'records',
       'schema_migrations',
@@ -46,10 +45,9 @@ describe('schema migrations', () => {
 
   it('lets two server processes start against an empty schema at the same time', async () => {
     const testDb = await testDatabase();
-    const dataDir = tmpDir();
     const [a, b] = await Promise.all([
-      createApp({ dataDir, database: await testDb.open() }),
-      createApp({ dataDir, database: await testDb.open() }),
+      createApp({ database: await testDb.open() }),
+      createApp({ database: await testDb.open() }),
     ]);
     try {
       const { body } = await push(a.app, [mutation('vehicles', vehicle())]);
@@ -62,7 +60,7 @@ describe('schema migrations', () => {
   });
 
   it('fails createApp with the database error when Postgres is unreachable', async () => {
-    await expect(createApp({ dataDir: tmpDir(), database: brokenDatabase() })).rejects.toThrow(/ECONNREFUSED/);
+    await expect(createApp({ database: brokenDatabase() })).rejects.toThrow(/ECONNREFUSED/);
   });
 });
 
@@ -142,7 +140,7 @@ describe('database outages', () => {
       transaction: (fn) => (down ? brokenDatabase().transaction(fn) : db.transaction(fn)),
       close: () => db.close(),
     };
-    const second = await createApp({ dataDir: tmpDir(), database: flaky });
+    const second = await createApp({ database: flaky });
     try {
       expect((await second.app.request('/healthz')).status).toBe(200);
       down = true;
@@ -163,7 +161,6 @@ describe('database outages', () => {
     let closed = 0;
     const db = await testDb.open();
     const server = await createApp({
-      dataDir: tmpDir(),
       database: { ...db, close: async () => void closed++ },
     });
     await server.close();

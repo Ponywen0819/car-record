@@ -1,6 +1,4 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { compress } from 'hono/compress';
@@ -22,8 +20,6 @@ import { serveStatic } from './static';
 export interface CreateAppOptions {
   /** Postgres connection (node-postgres pool in production, PGlite in tests). Closed by close(). */
   database: Database;
-  /** Directory holding photos/. Created if missing. */
-  dataDir: string;
   /** When non-empty, every /api/* request needs `Authorization: Bearer <apiToken>`. */
   apiToken?: string;
   /** Built web app (index.html, assets/, sw.js…). When unset, only API + /healthz are served. */
@@ -40,14 +36,11 @@ export interface ServerApp {
   close(): Promise<void>;
 }
 
-export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 /** Generous cap on push bodies: 500 mutations of small JSON records fit easily. */
 export const PUSH_MAX_BYTES = 10 * 1024 * 1024;
-const PHOTO_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
-const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 const NON_NEG_INT_RE = /^\d+$/;
 
-const jsonError = (c: Context, status: 400 | 401 | 404 | 413 | 415 | 500 | 503, error: string) =>
+const jsonError = (c: Context, status: 400 | 401 | 404 | 413 | 500 | 503, error: string) =>
   c.json({ error }, status);
 
 function tokensEqual(a: string, b: string): boolean {
@@ -72,8 +65,6 @@ function parseNonNegInt(raw: string | undefined, fallback: number): number | nul
 /** Create the app; runs pending database migrations first (rejects if Postgres is unreachable). */
 export async function createApp(opts: CreateAppOptions): Promise<ServerApp> {
   const store = await Store.open(opts.database, opts.now);
-  const photosDir = path.join(opts.dataDir, 'photos');
-  fs.mkdirSync(photosDir, { recursive: true });
   const apiToken = opts.apiToken || undefined;
 
   const app = new Hono();
@@ -156,49 +147,6 @@ export async function createApp(opts: CreateAppOptions): Promise<ServerApp> {
     if (limit === null || limit < 1) return jsonError(c, 400, 'limit must be a positive integer');
     const page = await store.pull(since, Math.min(limit, PULL_MAX_LIMIT));
     return c.json(page satisfies PullResponse);
-  });
-
-  // --- photos ---------------------------------------------------------------
-  app.put(
-    '/api/photos/:id',
-    async (c, next) => {
-      if (!PHOTO_ID_RE.test(c.req.param('id'))) return jsonError(c, 400, 'Invalid photo id');
-      const type = (c.req.header('Content-Type') ?? '').split(';')[0]!.trim().toLowerCase();
-      if (!PHOTO_TYPES.has(type)) return jsonError(c, 415, 'Unsupported photo content type');
-      await next();
-    },
-    bodyLimit({ maxSize: PHOTO_MAX_BYTES, onError: (c) => jsonError(c, 413, 'Photo too large (max 10 MB)') }),
-    async (c) => {
-      const id = c.req.param('id');
-      const type = c.req.header('Content-Type')!.split(';')[0]!.trim().toLowerCase();
-      const data = new Uint8Array(await c.req.arrayBuffer());
-      if (data.byteLength === 0) return jsonError(c, 400, 'Empty body');
-      if (data.byteLength > PHOTO_MAX_BYTES) return jsonError(c, 413, 'Photo too large (max 10 MB)');
-      const final = path.join(photosDir, id);
-      const tmp = `${final}.${crypto.randomUUID()}.tmp`;
-      await fs.promises.writeFile(tmp, data);
-      await fs.promises.rename(tmp, final);
-      const created = await store.savePhoto(id, type, data.byteLength);
-      return c.json({ id, size: data.byteLength, contentType: type }, created ? 201 : 200);
-    },
-  );
-
-  app.get('/api/photos/:id', async (c) => {
-    const id = c.req.param('id');
-    if (!PHOTO_ID_RE.test(id)) return jsonError(c, 400, 'Invalid photo id');
-    const meta = await store.getPhoto(id);
-    if (!meta) return jsonError(c, 404, 'Photo not found');
-    let data: Buffer;
-    try {
-      data = await fs.promises.readFile(path.join(photosDir, id));
-    } catch {
-      return jsonError(c, 404, 'Photo not found');
-    }
-    return c.body(new Uint8Array(data), 200, {
-      'Content-Type': meta.contentType,
-      'Content-Length': String(data.byteLength),
-      'Cache-Control': 'private, max-age=31536000, immutable',
-    });
   });
 
   // Unknown API routes: JSON 404, never the SPA fallback.

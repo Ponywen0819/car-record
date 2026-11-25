@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import type { FormProps } from '../../app/formRequest';
 import { useServices } from '../../app/services';
 import { useVehicleContext } from '../../app/vehicleContext';
@@ -6,6 +6,7 @@ import { ChipSelect } from '../../components/ChipSelect';
 import { FormLayout, MoreFieldsButton, SwitchRow } from '../../components/FormLayout';
 import { NumberInput, TextArea, TextInput } from '../../components/NumberInput';
 import { formatKm } from '../../lib/format';
+import { ReceiptScanButton } from '../forms/ReceiptScanButton';
 import { useFormChrome } from '../forms/useFormChrome';
 import { scanFuelReceipt } from './receiptScan';
 import { useFuelForm } from './useFuelForm';
@@ -16,8 +17,6 @@ export function dateHint(date: string, today: string): string | undefined {
   if (date === today) return '今天';
   return undefined;
 }
-
-type ScanFeedback = { tone: 'ok' | 'error'; text: string } | null;
 
 export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 'fuel' }>>) {
   const { db } = useServices();
@@ -36,36 +35,17 @@ export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 
   const ev = vehicle.fuelType === 'ev';
   const { values, setField, errors } = form;
 
-  const scanInput = useRef<HTMLInputElement>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanFeedback, setScanFeedback] = useState<ScanFeedback>(null);
-
-  const onScanFile = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    setScanning(true);
-    setScanFeedback(null);
-    try {
-      const res = await scanFuelReceipt(file);
-      if (!res.ok) {
-        setScanFeedback({ tone: 'error', text: res.message });
-      } else {
-        const applied = form.applyInvoice(res.fill);
-        if (!applied.ok) {
-          setScanFeedback({ tone: 'error', text: `這張發票已在 ${applied.duplicateOf.date} 記錄過` });
-        } else {
-          setScanFeedback({
-            tone: 'ok',
-            text: `已從發票 ${res.fill.invoiceNumber} 填入日期、油量、單價、總價，請確認里程與是否加滿`,
-          });
-        }
-      }
-    } catch {
-      setScanFeedback({ tone: 'error', text: '無法讀取照片，請再試一次' });
-    } finally {
-      setScanning(false);
-      if (scanInput.current) scanInput.current.value = '';
+  const onScan = async (file: File) => {
+    const res = await scanFuelReceipt(file);
+    if (!res.ok) return { ok: false as const, message: res.message };
+    const applied = form.applyInvoice(res.fill);
+    if (!applied.ok) {
+      return { ok: false as const, message: `這張發票已在 ${applied.duplicateOf.date} 記錄過` };
     }
+    return {
+      ok: true as const,
+      message: `已從發票 ${res.fill.invoiceNumber} 填入日期、油量、單價、總價，請確認里程與是否加滿`,
+    };
   };
 
   const stations = useMemo(
@@ -86,38 +66,7 @@ export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 
       warning={form.warning}
       error={chrome.saveError}
     >
-      {!ev ? (
-        <div className="field">
-          <div className="button-row">
-            <button
-              type="button"
-              className="plain-button pressable"
-              disabled={scanning}
-              onClick={() => scanInput.current?.click()}
-            >
-              {scanning ? '讀取中…' : '掃描發票'}
-            </button>
-          </div>
-          <input
-            ref={scanInput}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(e) => void onScanFile(e.target.files)}
-          />
-          {scanFeedback ? (
-            scanFeedback.tone === 'error' ? (
-              <div className="field-error" role="alert">
-                {scanFeedback.text}
-              </div>
-            ) : (
-              <div className="field-hint" role="status">
-                {scanFeedback.text}
-              </div>
-            )
-          ) : null}
-        </div>
-      ) : null}
+      {!ev ? <ReceiptScanButton onScan={onScan} /> : null}
       <div className="field-row">
         <TextInput label="日期" type="date" value={values.date} onChange={(v) => setField('date', v)} error={errors.date} hint={dateHint(values.date, today)} />
         <NumberInput

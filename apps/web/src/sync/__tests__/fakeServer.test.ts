@@ -73,18 +73,4 @@ describe('fakeServer', () => {
     );
     expect(server.get('vehicles', 'a')).toBeDefined(); // processed even though the response was lost
   });
-
-  it('stores and serves photos', async () => {
-    const server = createFakeServer();
-    const res = await server.fetch('/api/photos/p1', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: new Uint8Array([1, 2, 3]),
-    });
-    expect(res.status).toBe(200);
-    const got = await server.fetch('/api/photos/p1');
-    expect(got.headers.get('content-type')).toBe('image/jpeg');
-    expect(new Uint8Array(await got.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
-    expect((await server.fetch('/api/photos/missing')).status).toBe(404);
-  });
 });

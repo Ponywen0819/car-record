@@ -33,26 +33,23 @@ export async function testDatabase(): Promise<TestDatabase> {
 }
 
 export interface TestApp extends ServerApp {
-  dataDir: string;
   testDb: TestDatabase;
-  /** Start a second app on the same database schema and dataDir (a server restart). */
-  reopen(opts?: Partial<Omit<CreateAppOptions, 'database' | 'dataDir'>>): Promise<TestApp>;
+  /** Start a second app on the same database schema (a server restart). */
+  reopen(opts?: Partial<Omit<CreateAppOptions, 'database'>>): Promise<TestApp>;
 }
 
 type MakeAppOptions = Partial<Omit<CreateAppOptions, 'database'>> & { testDb?: TestDatabase };
 
-/** Create an app on a fresh temp dataDir + database schema; closed automatically after each test. */
+/** Create an app on a fresh database schema; closed automatically after each test. */
 export async function makeApp(opts: MakeAppOptions = {}): Promise<TestApp> {
   const { testDb: givenDb, ...appOpts } = opts;
-  const dataDir = appOpts.dataDir ?? tmpDir();
   const testDb = givenDb ?? (await testDatabase());
-  const server = await createApp({ ...appOpts, dataDir, database: await testDb.open() });
+  const server = await createApp({ ...appOpts, database: await testDb.open() });
   cleanups.push(() => server.close());
   return {
     ...server,
-    dataDir,
     testDb,
-    reopen: (more = {}) => makeApp({ ...appOpts, ...more, dataDir, testDb }),
+    reopen: (more = {}) => makeApp({ ...appOpts, ...more, testDb }),
   };
 }
 

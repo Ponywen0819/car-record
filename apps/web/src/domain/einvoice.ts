@@ -40,6 +40,13 @@ export interface FuelInvoiceFill {
   grade?: string;
 }
 
+export interface ReceiptInvoiceFill {
+  invoiceNumber: string;
+  date: string;
+  total: number;
+  note: string;
+}
+
 const HEADER_LEN = 77;
 const COLON = 0x3a;
 const STAR = 0x2a;
@@ -240,4 +247,14 @@ export function fuelFromInvoice(inv: EInvoice): FuelInvoiceFill | undefined {
   const grade = detectFuelGrade(fuel.name);
   if (grade !== undefined) out.grade = grade;
   return out;
+}
+
+/** Extract date, invoice total, and an item summary note for maintenance / expense forms. */
+export function receiptFromInvoice(inv: EInvoice): ReceiptInvoiceFill {
+  return {
+    invoiceNumber: inv.invoiceNumber,
+    date: inv.date,
+    total: inv.totalAmount,
+    note: inv.items.map((item) => `${item.name} ×${item.quantity} ${item.unitPrice}元`).join('、'),
+  };
 }

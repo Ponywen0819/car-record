@@ -1,147 +1,52 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { makeApp, type TestApp } from './helpers';
+import { MIGRATIONS, migrate } from '../store';
+import { makeApp, testDatabase } from './helpers';
 
-const bytes = (n: number, fill = 7) => new Uint8Array(n).fill(fill);
-
-function put(app: TestApp['app'], id: string, body: Uint8Array<ArrayBuffer>, contentType = 'image/jpeg', headers: Record<string, string> = {}) {
-  return app.request(`/api/photos/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType, ...headers },
-    body,
-  });
-}
-
-describe('photos', () => {
-  it('stores a photo and serves it back with its content type and immutable caching', async () => {
-    const { app, dataDir } = await makeApp();
-    const data = bytes(2048, 3);
-    const res = await put(app, '0190a1b2-c3d4-7e5f-8a9b-0123456789ab', data, 'image/webp');
-    expect(res.status).toBe(201);
-    expect(fs.existsSync(path.join(dataDir, 'photos', '0190a1b2-c3d4-7e5f-8a9b-0123456789ab'))).toBe(true);
-
-    const get = await app.request('/api/photos/0190a1b2-c3d4-7e5f-8a9b-0123456789ab', {
-      headers: { 'Accept-Encoding': 'gzip' },
+/**
+ * Photos were removed: a receipt / work-order picture has no value on its own; the forms scan the
+ * e-invoice QR codes instead. The photo API is gone and a migration drops the old photos table.
+ */
+describe('photos (removed)', () => {
+  it('has no photo upload or download endpoint any more', async () => {
+    const { app } = await makeApp();
+    const put = await app.request('/api/photos/0190a1b2-c3d4-7e5f-8a9b-0123456789ab', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: new Uint8Array([1, 2, 3]),
     });
-    expect(get.status).toBe(200);
-    expect(get.headers.get('content-type')).toBe('image/webp');
-    expect(get.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
-    expect(get.headers.get('content-encoding')).toBeNull(); // images are not gzipped
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(data);
+    expect(put.status).toBe(404);
+    expect(await put.json()).toEqual({ error: 'Not found' });
+    const get = await app.request('/api/photos/0190a1b2-c3d4-7e5f-8a9b-0123456789ab');
+    expect(get.status).toBe(404);
   });
 
-  it('is idempotent: re-PUT overwrites and returns 200', async () => {
+  it('createApp needs no data directory', async () => {
     const { app } = await makeApp();
-    expect((await put(app, 'p1', bytes(10, 1), 'image/png')).status).toBe(201);
-    const again = await put(app, 'p1', bytes(20, 2), 'image/jpeg');
-    expect(again.status).toBe(200);
-    const get = await app.request('/api/photos/p1');
-    expect(get.headers.get('content-type')).toBe('image/jpeg');
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(bytes(20, 2));
+    expect((await app.request('/healthz')).status).toBe(200);
   });
 
-  it.each(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'IMAGE/JPEG; charset=binary'])(
-    'accepts content type %s',
-    async (ct) => {
-      const { app } = await makeApp();
-      const res = await put(app, 'ok', bytes(4), ct);
-      expect(res.status).toBe(201);
-    },
-  );
+  it('a database created by v0.2.0 loses its photos table on upgrade, keeping the records', async () => {
+    const testDb = await testDatabase();
+    const db = await testDb.open();
+    // Bring the schema to v0.2.0 (migration 1 only), with a photo row and a record.
+    await db.query('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at BIGINT NOT NULL)');
+    for (const statement of MIGRATIONS[0]!) await db.query(statement);
+    await db.query('INSERT INTO schema_migrations (version, applied_at) VALUES (1, 0)');
+    await db.query(`INSERT INTO photos (id, content_type, size, created_at, updated_at) VALUES ('p1', 'image/jpeg', 3, 0, 0)`);
+    await db.query(`INSERT INTO records (table_name, id, data, rev, updated_at) VALUES ('vehicles', 'v1', '{"id":"v1"}', 1, 0)`);
+    await db.query(`UPDATE meta SET value = 1 WHERE key = 'rev'`);
 
-  it('returns 404 JSON for a missing photo', async () => {
-    const { app } = await makeApp();
-    const res = await app.request('/api/photos/missing');
-    expect(res.status).toBe(404);
-    expect(((await res.json()) as any).error).toBeTypeOf('string');
-  });
+    await migrate(db);
 
-  it.each(['text/plain', 'application/octet-stream', 'image/gif', 'image/svg+xml'])(
-    'returns 415 for unsupported content type %s',
-    async (ct) => {
-      const { app, dataDir } = await makeApp();
-      const res = await put(app, 'x1', bytes(4), ct);
-      expect(res.status).toBe(415);
-      expect(((await res.json()) as any).error).toBeTypeOf('string');
-      expect(fs.existsSync(path.join(dataDir, 'photos', 'x1'))).toBe(false);
-    },
-  );
-
-  it('returns 415 when the content type is missing', async () => {
-    const { app } = await makeApp();
-    const res = await app.request('/api/photos/x2', { method: 'PUT', body: bytes(4) });
-    expect(res.status).toBe(415);
-  });
-
-  it('returns 413 for bodies over 10 MB and stores nothing', async () => {
-    const { app, dataDir } = await makeApp();
-    const res = await put(app, 'big', bytes(10 * 1024 * 1024 + 1));
-    expect(res.status).toBe(413);
-    expect(((await res.json()) as any).error).toBeTypeOf('string');
-    expect(fs.existsSync(path.join(dataDir, 'photos', 'big'))).toBe(false);
-    expect((await app.request('/api/photos/big')).status).toBe(404);
-  });
-
-  it('returns 413 based on a too-large Content-Length header', async () => {
-    const { app } = await makeApp();
-    const res = await put(app, 'big2', bytes(10), 'image/jpeg', { 'Content-Length': String(11 * 1024 * 1024) });
-    expect(res.status).toBe(413);
-  });
-
-  it('accepts exactly 10 MB', async () => {
-    const { app } = await makeApp();
-    const res = await put(app, 'edge', bytes(10 * 1024 * 1024));
-    expect(res.status).toBe(201);
-  });
-
-  it('returns 400 for an empty body', async () => {
-    const { app } = await makeApp();
-    const res = await put(app, 'empty', new Uint8Array(0));
-    expect(res.status).toBe(400);
-  });
-
-  it.each([
-    '..%2F..%2Fapp.db',
-    '..%5Capp.db',
-    'a.jpg',
-    'has%20space',
-    'x'.repeat(65),
-    'semi%3Bcolon',
-  ])('rejects invalid / path-traversal id %s with 400', async (id) => {
-    const { app, dataDir } = await makeApp();
-    const res = await put(app, id, bytes(4));
-    expect(res.status).toBe(400);
-    const get = await app.request(`/api/photos/${id}`);
-    expect(get.status).toBe(400);
-    expect(fs.readdirSync(dataDir).filter((f) => f !== 'photos')).toEqual([]);
-  });
-
-  it.each(['%2E%2E', '..', '%2e%2e/%2e%2e/app.db'])(
-    'dot-segment id %s is normalised away by the URL parser and never writes a file',
-    async (id) => {
-      const { app, dataDir } = await makeApp();
-      const res = await put(app, id, bytes(4));
-      expect([400, 404]).toContain(res.status);
-      expect(fs.readdirSync(path.join(dataDir, 'photos'))).toEqual([]);
-      expect(fs.readdirSync(dataDir).filter((f) => f !== 'photos')).toEqual([]);
-    },
-  );
-
-  it('accepts a 64-char id', async () => {
-    const { app } = await makeApp();
-    const res = await put(app, 'a'.repeat(64), bytes(4));
-    expect(res.status).toBe(201);
-  });
-
-  it('persists photos across app instances', async () => {
-    const first = await makeApp();
-    await put(first.app, 'keep', bytes(8, 9), 'image/heic');
-    await first.close();
-    const second = await first.reopen();
-    const get = await second.app.request('/api/photos/keep');
-    expect(get.status).toBe(200);
-    expect(get.headers.get('content-type')).toBe('image/heic');
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(bytes(8, 9));
+    const { rows: tables } = await db.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'photos'`,
+    );
+    expect(tables).toEqual([]);
+    const { rows: records } = await db.query<{ id: string }>('SELECT id FROM records');
+    expect(records).toEqual([{ id: 'v1' }]);
+    const { rows: versions } = await db.query<{ version: number }>('SELECT version FROM schema_migrations ORDER BY version');
+    expect(versions.map((v) => v.version)).toEqual(MIGRATIONS.map((_, i) => i + 1));
+    expect(MIGRATIONS.length).toBeGreaterThanOrEqual(2);
+    await db.close();
   });
 });

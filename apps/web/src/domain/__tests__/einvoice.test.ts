@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EInvoiceError, fuelFromInvoice, parseEInvoice, type EInvoice } from '../einvoice';
+import { EInvoiceError, fuelFromInvoice, parseEInvoice, receiptFromInvoice, type EInvoice } from '../einvoice';
 
 /**
  * Taiwan e-invoice proof (電子發票證明聯) QR codes, per the MOF spec
@@ -198,5 +198,45 @@ describe('fuelFromInvoice', () => {
   it('returns undefined when no item is fuel', () => {
     expect(fuelFromInvoice(invoice([{ name: '礦泉水', quantity: 1, unitPrice: 20 }]))).toBeUndefined();
     expect(fuelFromInvoice(invoice([]))).toBeUndefined();
+  });
+});
+
+describe('receiptFromInvoice (maintenance / other expenses)', () => {
+  const invoice = (items: EInvoice['items'], totalAmount: number): EInvoice => ({
+    invoiceNumber: 'MK13572468',
+    date: '2025-11-20',
+    randomCode: 'Z9z9',
+    salesAmount: 0,
+    totalAmount,
+    buyerId: '00000000',
+    sellerId: '24681357',
+    items,
+  });
+
+  it('fills the date and the invoice total, and lists the items for the note', () => {
+    const fill = receiptFromInvoice(
+      invoice(
+        [
+          { name: '機油 5W-30', quantity: 4, unitPrice: 320 },
+          { name: '機油芯', quantity: 1, unitPrice: 250 },
+          { name: '工資', quantity: 1, unitPrice: 300 },
+        ],
+        1830,
+      ),
+    );
+    expect(fill).toEqual({
+      invoiceNumber: 'MK13572468',
+      date: '2025-11-20',
+      total: 1830,
+      note: '機油 5W-30 ×4 320元、機油芯 ×1 250元、工資 ×1 300元',
+    });
+  });
+
+  it('keeps decimal quantities and prices as written', () => {
+    expect(receiptFromInvoice(invoice([{ name: '停車費', quantity: 2.5, unitPrice: 40 }], 100)).note).toBe('停車費 ×2.5 40元');
+  });
+
+  it('leaves the note empty when the QR codes carry no items', () => {
+    expect(receiptFromInvoice(invoice([], 500))).toEqual({ invoiceNumber: 'MK13572468', date: '2025-11-20', total: 500, note: '' });
   });
 });
