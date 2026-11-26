@@ -234,3 +234,127 @@ describe('submit', () => {
     expect(res).toEqual({ ok: false, reason: 'error', message: 'boom' });
   });
 });
+
+describe('invoice scan', () => {
+  const fill = { invoiceNumber: 'QZ87654321', date: '2026-11-20', amount: 30.12, unitPrice: 31.6, total: 952, grade: '98' };
+
+  it('fills date, amount, unit price, total and grade from the scanned invoice', () => {
+    const { result } = setup();
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+    expect(result.current.values).toMatchObject({
+      date: '2026-11-20',
+      amount: '30.12',
+      unitPrice: '31.6',
+      total: '952',
+      grade: '98',
+      invoiceNumber: 'QZ87654321',
+      odometer: '52340',
+      station: '中油 民生站',
+    });
+    expect(result.current.derived).toBeNull();
+    expect(result.current.dirty).toBe(true);
+  });
+
+  it('keeps the current grade when the invoice does not say', () => {
+    const { result } = setup();
+    act(() => {
+      result.current.applyInvoice({ ...fill, grade: undefined });
+    });
+    expect(result.current.values.grade).toBe('95');
+  });
+
+  it('saves the invoice number with the record', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.applyInvoice(fill);
+    });
+    act(() => result.current.setField('odometer', '52410'));
+    let res: Awaited<ReturnType<typeof result.current.submit>> | undefined;
+    await act(async () => {
+      res = await result.current.submit();
+    });
+    expect(res?.ok).toBe(true);
+    const [, , draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(draft).toEqual({
+      vehicleId: 'v1',
+      date: '2026-11-20',
+      odometer: 52410,
+      amount: 30.12,
+      unitPrice: 31.6,
+      cost: 952,
+      isFull: true,
+      station: '中油 民生站',
+      grade: '98',
+      invoiceNumber: 'QZ87654321',
+    });
+  });
+
+  it('refuses an invoice that another fuel record already used', () => {
+    const used = f({ id: 'f-used', date: '2026-11-10', invoiceNumber: 'QZ87654321' });
+    const { result } = setup({ fuelRecords: [used] });
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: false, duplicateOf: used });
+    expect(result.current.values.amount).toBe('');
+    expect(result.current.values.invoiceNumber).toBe('');
+  });
+
+  it('allows re-scanning the invoice of the record being edited, and keeps it on save', async () => {
+    const record = f({ id: 'f0', invoiceNumber: 'QZ87654321' });
+    const { result } = setup({ record, fuelRecords: [record] });
+    expect(result.current.values.invoiceNumber).toBe('QZ87654321');
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+    await act(async () => {
+      await result.current.submit();
+    });
+    const [, , draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(draft).toMatchObject({ id: 'f0', invoiceNumber: 'QZ87654321' });
+  });
+
+  it('ignores soft-deleted records when checking for duplicates', () => {
+    const gone = f({ id: 'f-gone', invoiceNumber: 'QZ87654321', deletedAt: 9 });
+    const { result } = setup({ fuelRecords: [gone] });
+    let res: ReturnType<typeof result.current.applyInvoice> | undefined;
+    act(() => {
+      res = result.current.applyInvoice(fill);
+    });
+    expect(res).toEqual({ ok: true });
+  });
+});
+
+describe('photos', () => {
+  it('no longer has a photo field on the form', () => {
+    const { result } = setup();
+    expect('photoIds' in result.current.values).toBe(false);
+  });
+
+  it('keeps photos already attached to an edited record', async () => {
+    const record = f({ id: 'f0', photoIds: ['p1', 'p2'] });
+    const { result } = setup({ record });
+    await act(async () => {
+      await result.current.submit();
+    });
+    const [, , draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(draft).toMatchObject({ id: 'f0', photoIds: ['p1', 'p2'] });
+  });
+
+  it('does not attach photos to a new record', async () => {
+    const { result } = setup();
+    act(() => result.current.setField('amount', '30'));
+    await act(async () => {
+      await result.current.submit();
+    });
+    const [, , draft] = vi.mocked(repo.saveRecord).mock.calls[0]!;
+    expect(draft).not.toHaveProperty('photoIds');
+  });
+});

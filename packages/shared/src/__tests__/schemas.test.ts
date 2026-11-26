@@ -4,6 +4,7 @@ import {
   recordSchemas,
   fuelRecordSchema,
   maintenanceRecordSchema,
+  expenseRecordSchema,
   reminderRuleSchema,
   vehicleSchema,
   pushRequestSchema,
@@ -33,6 +34,24 @@ describe('record schemas', () => {
     expect(fuelRecordSchema.safeParse(ok).success).toBe(true);
     expect(fuelRecordSchema.safeParse({ ...ok, odometer: -1 }).success).toBe(false);
     expect(fuelRecordSchema.safeParse({ ...ok, amount: 0 }).success).toBe(false);
+  });
+
+  it('keeps an optional e-invoice number (2 letters + 8 digits) on fuel records', () => {
+    const ok = { ...base, vehicleId: 'v1', date: '2026-11-23', odometer: 52340, amount: 40.5, isFull: true };
+    const parsed = fuelRecordSchema.safeParse({ ...ok, invoiceNumber: 'QZ87654321' });
+    expect(parsed.success && parsed.data.invoiceNumber).toBe('QZ87654321');
+    expect(fuelRecordSchema.safeParse({ ...ok, invoiceNumber: 'QZ8765432' }).success).toBe(false);
+    expect(fuelRecordSchema.safeParse({ ...ok, invoiceNumber: 'qz87654321' }).success).toBe(false);
+  });
+
+  it('keeps an optional e-invoice number on maintenance and expense records too', () => {
+    const maint = { ...base, vehicleId: 'v1', date: '2026-11-23', odometer: 100, kind: 'scheduled', items: [{ itemKey: 'engine_oil' }] };
+    const exp = { ...base, vehicleId: 'v1', date: '2026-11-23', category: 'parking', cost: 120 };
+    expect(maintenanceRecordSchema.safeParse({ ...maint, invoiceNumber: 'MK13572468' }).success).toBe(true);
+    expect(maintenanceRecordSchema.safeParse({ ...maint, invoiceNumber: 'MK1357246' }).success).toBe(false);
+    const parsed = expenseRecordSchema.safeParse({ ...exp, invoiceNumber: 'PK24681357' });
+    expect(parsed.success && parsed.data.invoiceNumber).toBe('PK24681357');
+    expect(expenseRecordSchema.safeParse({ ...exp, invoiceNumber: 'pk24681357' }).success).toBe(false);
   });
 
   it('requires ISO dates (YYYY-MM-DD)', () => {

@@ -2,8 +2,8 @@
  * Two devices (separate Dexie databases + engines) sharing one server.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getRecord, listActive, restoreRecord, saveRecord, savePhoto, softDelete } from '../../db/repository';
-import { fuelDraft, testBlob, vehicleDraft } from '../../db/__tests__/fixtures';
+import { getRecord, listActive, restoreRecord, saveRecord, softDelete } from '../../db/repository';
+import { fuelDraft, vehicleDraft } from '../../db/__tests__/fixtures';
 import { createFakeServer, type FakeServer } from './fakeServer';
 import { makeHarness, type Harness } from './helpers';
 
@@ -81,14 +81,5 @@ describe('two devices, one server', () => {
     expect(server.get('vehicles', car.id)).toMatchObject({ name: 'from A' });
     expect((await getRecord(A.db, 'vehicles', car.id))?.name).toBe('from A');
     expect((await getRecord(B.db, 'vehicles', car.id))?.name).toBe('from A');
-  });
-
-  it('photos uploaded by A are served to B by URL', async () => {
-    const photoId = await savePhoto(A.db, testBlob('pic'), 1);
-    await saveRecord(A.db, 'vehicles', vehicleDraft(), 2);
-    await A.engine.syncNow();
-    expect(server.photos.has(photoId)).toBe(true);
-    const res = await server.fetch(`/api/photos/${photoId}`);
-    expect(await res.text()).toBe('pic');
   });
 });

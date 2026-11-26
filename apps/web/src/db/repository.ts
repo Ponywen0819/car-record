@@ -199,31 +199,3 @@ export async function importRecords(
   notifyWrite();
   return items.length;
 }
-
-// ---------------------------------------------------------------------------
-// Photos
-// ---------------------------------------------------------------------------
-
-/** Store a (already compressed) photo locally as pending upload. Returns its id (uuidv7). */
-export async function savePhoto(db: CarDB, blob: Blob, now: number = Date.now()): Promise<string> {
-  const id = uuidv7(now);
-  await db.photos.put({
-    id,
-    blob,
-    contentType: blob.type || 'application/octet-stream',
-    status: 'pending',
-    createdAt: now,
-  });
-  notifyWrite();
-  return id;
-}
-
-/**
- * URL to display a photo: an object URL for a local blob, otherwise `${baseUrl}/api/photos/${id}`.
- * Callers revoke object URLs (blob: prefix) when done.
- */
-export async function photoUrl(db: CarDB, id: string, baseUrl = ''): Promise<string> {
-  const entry = await db.photos.get(id);
-  if (entry?.blob) return URL.createObjectURL(entry.blob);
-  return `${baseUrl}/api/photos/${encodeURIComponent(id)}`;
-}

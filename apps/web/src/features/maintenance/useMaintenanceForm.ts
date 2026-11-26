@@ -5,9 +5,9 @@ import {
   type MaintenanceKind,
   type MaintenanceRecord,
 } from '@car-record/shared';
-import { dueItemKeys, lastValue, type ReminderStatus } from '../../domain';
+import { dueItemKeys, lastValue, type ReceiptInvoiceFill, type ReminderStatus } from '../../domain';
 import { saveRecord, type Draft } from '../../db/repository';
-import { compact, formatInputNumber } from '../../lib/format';
+import { compact, formatInputNumber, isBlank } from '../../lib/format';
 import type { ChipOption } from '../../components/ChipSelect';
 import {
   DATE_RE,
@@ -31,8 +31,10 @@ export interface MaintenanceFormValues {
   cost: string;
   shop: string;
   note: string;
-  photoIds: string[];
+  invoiceNumber: string;
 }
+
+export type ApplyMaintenanceInvoiceResult = { ok: true } | { ok: false; duplicateOf: MaintenanceRecord };
 
 export interface UseMaintenanceFormOptions extends EntryFormContext {
   maintenanceRecords: MaintenanceRecord[];
@@ -57,7 +59,7 @@ function initialValues(o: UseMaintenanceFormOptions, dueKeys: string[]): Mainten
       cost: formatInputNumber(r.cost),
       shop: r.shop ?? '',
       note: r.note ?? '',
-      photoIds: r.photoIds ?? [],
+      invoiceNumber: r.invoiceNumber ?? '',
     };
   }
   const d = o.duplicateOf;
@@ -72,7 +74,7 @@ function initialValues(o: UseMaintenanceFormOptions, dueKeys: string[]): Mainten
     cost: formatInputNumber(d?.cost),
     shop: d?.shop ?? lastValue(o.maintenanceRecords, 'shop') ?? '',
     note: d?.note ?? '',
-    photoIds: [],
+    invoiceNumber: '',
   };
 }
 
@@ -115,6 +117,37 @@ export function useMaintenanceForm(o: UseMaintenanceFormOptions) {
     [setValues],
   );
 
+  const applyInvoice = useCallback(
+    (fill: ReceiptInvoiceFill): ApplyMaintenanceInvoiceResult => {
+      const duplicate = o.maintenanceRecords.find(
+        (r) =>
+          (r.deletedAt === undefined || r.deletedAt === null) &&
+          r.id !== o.record?.id &&
+          r.invoiceNumber === fill.invoiceNumber,
+      );
+      if (duplicate) return { ok: false, duplicateOf: duplicate };
+
+      setValues((prev) => ({
+        ...prev,
+        date: fill.date,
+        cost: formatInputNumber(fill.total),
+        invoiceNumber: fill.invoiceNumber,
+        note: fill.note ? (isBlank(prev.note) ? fill.note : `${prev.note}\n${fill.note}`) : prev.note,
+      }));
+      guard.reset();
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.date;
+        delete next.cost;
+        delete next.note;
+        delete next.invoiceNumber;
+        return next;
+      });
+      return { ok: true };
+    },
+    [o.maintenanceRecords, o.record?.id, setValues, guard, setErrors],
+  );
+
   const submit = useCallback(async (): Promise<SubmitResult<MaintenanceRecord>> => {
     const errors: Record<string, string> = {};
     if (!DATE_RE.test(values.date)) errors.date = '請選擇日期';
@@ -132,6 +165,7 @@ export function useMaintenanceForm(o: UseMaintenanceFormOptions) {
     if (cost === undefined && items.some((i) => i.cost !== undefined)) {
       cost = items.reduce((sum, i) => sum + (i.cost ?? 0), 0);
     }
+    const legacyPhotos = o.record?.photoIds && o.record.photoIds.length > 0 ? o.record.photoIds : undefined;
     const draft = compact({
       id: o.record?.id,
       createdAt: o.record?.createdAt,
@@ -142,8 +176,9 @@ export function useMaintenanceForm(o: UseMaintenanceFormOptions) {
       shop: trimOrUndefined(values.shop),
       items,
       cost,
+      invoiceNumber: values.invoiceNumber || undefined,
       note: trimOrUndefined(values.note),
-      photoIds: values.photoIds.length > 0 ? values.photoIds : undefined,
+      photoIds: legacyPhotos,
     });
     return run(() => saveRecord(o.db, 'maintenance', draft as Draft<'maintenance'>, o.now?.()));
   }, [values, setErrors, guard, o, run]);
@@ -166,6 +201,7 @@ export function useMaintenanceForm(o: UseMaintenanceFormOptions) {
   return {
     values,
     setField,
+    applyInvoice,
     toggleItem,
     setItemCost,
     itemOptions,

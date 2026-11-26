@@ -1,13 +1,10 @@
 import 'fake-indexeddb/auto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { uuidv7 } from '@car-record/shared';
 import { createApp, type ServerApp } from '../../server/src/app';
 import { closeSharedPglite, createTestDatabase, type TestDatabase } from '../../server/src/testing/testDatabase';
 import { createDb, type CarDB } from '../src/db/db';
-import { getRecord, listActive, saveRecord, savePhoto, softDelete } from '../src/db/repository';
+import { getRecord, listActive, saveRecord, softDelete } from '../src/db/repository';
 import { createSyncEngine, type SyncEngine } from '../src/sync/engine';
 
 interface Device {
@@ -15,14 +12,13 @@ interface Device {
   engine: SyncEngine;
 }
 
-let dataDir: string;
 let testDb: TestDatabase;
 let server: ServerApp;
 let online = true;
 const devices: CarDB[] = [];
 
 async function startServer(apiToken?: string): Promise<ServerApp> {
-  return createApp({ dataDir, apiToken, database: await testDb.open() });
+  return createApp({ apiToken, database: await testDb.open() });
 }
 
 /** fetch → in-process Hono app; throws like a real network failure when offline. */
@@ -48,7 +44,6 @@ function device(token?: string): Device {
 
 beforeEach(async () => {
   online = true;
-  dataDir = mkdtempSync(join(tmpdir(), 'car-record-it-'));
   testDb = await createTestDatabase();
   server = await startServer();
 });
@@ -60,7 +55,6 @@ afterEach(async () => {
   }
   await server.close();
   await testDb.dispose();
-  rmSync(dataDir, { recursive: true, force: true });
 });
 
 afterAll(closeSharedPglite);
@@ -148,19 +142,16 @@ describe('client ↔ real server', () => {
     expect(history.map((h) => (h.data as { name: string }).name)).toContain('A 改的');
   });
 
-  it('uploads photos, drops the local blob, and serves them back', async () => {
+  it('syncs the e-invoice number of a scanned fuel record to the other device', async () => {
     const a = device();
-    const id = await savePhoto(a.db, new Blob([new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3])], { type: 'image/jpeg' }));
+    const b = device();
+    const { vehicle, fuel } = await addVehicleAndFuel(a.db);
+    await saveRecord(a.db, 'fuel', { ...fuel, invoiceNumber: 'QZ87654321' });
     await a.engine.syncNow();
-
-    const local = await a.db.photos.get(id);
-    expect(local?.status).toBe('uploaded');
-    expect(local?.blob).toBeUndefined();
-
-    const res = await server.app.request(`/api/photos/${id}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('image/jpeg');
-    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3]));
+    await b.engine.syncNow();
+    const [synced] = await listActive(b.db, 'fuel', vehicle.id);
+    expect(synced?.invoiceNumber).toBe('QZ87654321');
+    expect(b.db.tables.map((t) => t.name)).not.toContain('photos');
   });
 
   it('data survives a server restart; a brand-new device gets everything', async () => {

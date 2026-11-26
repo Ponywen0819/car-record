@@ -27,17 +27,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,wasm}'],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/healthz/],
-        runtimeCaching: [
-          {
-            // Photos are immutable by id: cache-first.
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/photos/'),
-            handler: 'CacheFirst',
-            method: 'GET',
-            options: { cacheName: 'photos', expiration: { maxEntries: 500 } },
-          },
-        ],
       },
     }),
   ],

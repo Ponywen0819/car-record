@@ -33,7 +33,3 @@ export const listActive = vi.fn(async (): Promise<any[]> => []);
 export const importRecords = vi.fn(async (_db: CarDB, tables: Record<string, unknown[] | undefined>) =>
   Object.values(tables).reduce((sum, rows) => sum + (rows?.length ?? 0), 0),
 );
-
-export const savePhoto = vi.fn(async (): Promise<string> => 'photo-1');
-
-export const photoUrl = vi.fn(async (_db: CarDB, id: string): Promise<string> => `/api/photos/${id}`);

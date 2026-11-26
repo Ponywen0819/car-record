@@ -27,7 +27,7 @@ describe('loadConfig', () => {
     const cfg = loadConfig(ENV, pathToFileURL(path.join(server, 'src', 'main.ts')).href, '/cwd');
     expect(cfg.port).toBe(8080);
     expect(cfg.databaseUrl).toBe('postgres://localhost/car_record');
-    expect(cfg.dataDir).toBe(path.resolve('/cwd', 'data'));
+    expect(cfg).not.toHaveProperty('dataDir');
     expect(cfg.apiToken).toBeUndefined();
     expect(cfg.staticDir).toBe(web);
   });
@@ -58,7 +58,7 @@ describe('loadConfig', () => {
     const cfg = loadConfig(
       {
         PORT: '3000',
-        DATA_DIR: '/srv/data',
+        DATA_DIR: '/srv/data', // no longer used: ignored
         API_TOKEN: 'tok',
         STATIC_DIR: '/srv/www',
         DATABASE_URL: 'postgres://car:pw@db.lan:5433/car_record',
@@ -69,7 +69,6 @@ describe('loadConfig', () => {
     expect(cfg).toEqual({
       port: 3000,
       databaseUrl: 'postgres://car:pw@db.lan:5433/car_record',
-      dataDir: path.resolve('/cwd', '/srv/data'),
       apiToken: 'tok',
       staticDir: path.resolve('/cwd', '/srv/www'),
     });

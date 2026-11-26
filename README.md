@@ -29,7 +29,7 @@ server 和整合測試預設使用 [PGlite](https://pglite.dev)（編譯成 WASM
 TEST_DATABASE_URL=postgres://postgres:pw@localhost:5432/postgres pnpm test:postgres
 ```
 
-`apps/web/integration/` 會讓真正的前端同步引擎直接對真正的 server 程式碼跑測試（離線佇列、衝突、照片、重啟後資料仍在、token 驗證）。
+`apps/web/integration/` 會讓真正的前端同步引擎直接對真正的 server 程式碼跑測試（離線佇列、衝突、發票號碼同步、重啟後資料仍在、token 驗證）。
 
 ## 正式環境
 
@@ -71,11 +71,10 @@ services:
 |---|---|---|
 | `DATABASE_URL` | （必填） | `postgres://user:password@host:5432/car_record`。建議用專屬的資料庫；啟動時會自動建立／升級資料表。連不上時程式直接結束，由容器的重啟策略重試 |
 | `PORT` | `8080` | 純 HTTP 連接埠（HTTPS 由外部處理） |
-| `DATA_DIR` | `./data`（Docker 裡是 `/data`，掛在 `car-record-data` volume） | 照片存在 `photos/` |
 | `STATIC_DIR` | `apps/web/dist` | 前端 build 輸出 |
 | `API_TOKEN` | （無） | 設定後 `/api/*` 需要 `Authorization: Bearer <token>`；App 的「設定 → 同步」可以填入 |
 
-**備份**：紀錄在 Postgres（`pg_dump "$DATABASE_URL" > car-record.sql`），照片在 `DATA_DIR`，兩邊都要備份。`/healthz` 會順便檢查資料庫，連不上時回 503。
+**備份**：所有紀錄都在 Postgres（發票／收據改在手機端離線掃描台灣電子發票 QR code 自動填入，不儲存照片），只需備份資料庫（`pg_dump "$DATABASE_URL" > car-record.sql`）。`/healthz` 會順便檢查資料庫，連不上時回 503。
 
 ## CI
 

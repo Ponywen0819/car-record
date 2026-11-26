@@ -17,7 +17,7 @@ const database = createPgDatabase(config.databaseUrl);
 
 let server: Awaited<ReturnType<typeof createApp>>;
 try {
-  server = await createApp({ database, dataDir: config.dataDir, apiToken: config.apiToken, staticDir });
+  server = await createApp({ database, apiToken: config.apiToken, staticDir });
 } catch (err) {
   // Fail fast; the container's restart policy retries until Postgres is reachable.
   console.error(`car-record: cannot start, database error: ${(err as Error).message}`);
@@ -38,7 +38,7 @@ const dbHost = (() => {
 const http = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(
     `car-record server listening on http://0.0.0.0:${info.port} ` +
-      `(db: ${dbHost}, photos: ${config.dataDir}, static: ${staticDir ?? `none${config.staticDir ? ` — ${config.staticDir} not found` : ''}`}, ` +
+      `(db: ${dbHost}, static: ${staticDir ?? `none${config.staticDir ? ` — ${config.staticDir} not found` : ''}`}, ` +
       `auth: ${config.apiToken ? 'bearer token' : 'off'})`,
   );
 });

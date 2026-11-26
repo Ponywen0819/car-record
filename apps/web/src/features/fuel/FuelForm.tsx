@@ -5,9 +5,10 @@ import { useVehicleContext } from '../../app/vehicleContext';
 import { ChipSelect } from '../../components/ChipSelect';
 import { FormLayout, MoreFieldsButton, SwitchRow } from '../../components/FormLayout';
 import { NumberInput, TextArea, TextInput } from '../../components/NumberInput';
-import { PhotoField } from '../../components/PhotoField';
 import { formatKm } from '../../lib/format';
+import { ReceiptScanButton } from '../forms/ReceiptScanButton';
 import { useFormChrome } from '../forms/useFormChrome';
+import { scanFuelReceipt } from './receiptScan';
 import { useFuelForm } from './useFuelForm';
 
 const GRADES = ['92', '95', '98', '柴油'];
@@ -34,6 +35,19 @@ export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 
   const ev = vehicle.fuelType === 'ev';
   const { values, setField, errors } = form;
 
+  const onScan = async (file: File) => {
+    const res = await scanFuelReceipt(file);
+    if (!res.ok) return { ok: false as const, message: res.message };
+    const applied = form.applyInvoice(res.fill);
+    if (!applied.ok) {
+      return { ok: false as const, message: `這張發票已在 ${applied.duplicateOf.date} 記錄過` };
+    }
+    return {
+      ok: true as const,
+      message: `已從發票 ${res.fill.invoiceNumber} 填入日期、油量、單價、總價，請確認里程與是否加滿`,
+    };
+  };
+
   const stations = useMemo(
     () => Array.from(new Set(data.fuel.map((f) => f.station).filter((s): s is string => !!s))).slice(0, 20),
     [data.fuel],
@@ -52,6 +66,7 @@ export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 
       warning={form.warning}
       error={chrome.saveError}
     >
+      {!ev ? <ReceiptScanButton onScan={onScan} /> : null}
       <div className="field-row">
         <TextInput label="日期" type="date" value={values.date} onChange={(v) => setField('date', v)} error={errors.date} hint={dateHint(values.date, today)} />
         <NumberInput
@@ -124,12 +139,9 @@ export function FuelForm(props: FormProps<Extract<FormProps['request'], { kind: 
         </div>
       ) : null}
       {chrome.advanced ? (
-        <>
-          <TextArea label="備註" value={values.note} onChange={(v) => setField('note', v)} />
-          <PhotoField db={db} photoIds={values.photoIds} onChange={(ids) => setField('photoIds', ids)} />
-        </>
+        <TextArea label="備註" value={values.note} onChange={(v) => setField('note', v)} />
       ) : (
-        <MoreFieldsButton label="備註、照片" onClick={chrome.expand} />
+        <MoreFieldsButton label="備註" onClick={chrome.expand} />
       )}
     </FormLayout>
   );

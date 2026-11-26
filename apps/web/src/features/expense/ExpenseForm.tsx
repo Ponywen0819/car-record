@@ -5,7 +5,8 @@ import { useVehicleContext } from '../../app/vehicleContext';
 import { ChipSelect } from '../../components/ChipSelect';
 import { FormLayout, MoreFieldsButton, SwitchRow } from '../../components/FormLayout';
 import { NumberInput, TextArea, TextInput } from '../../components/NumberInput';
-import { PhotoField } from '../../components/PhotoField';
+import { ReceiptScanButton } from '../forms/ReceiptScanButton';
+import { scanReceipt } from '../forms/receiptScan';
 import { useFormChrome } from '../forms/useFormChrome';
 import { dateHint } from '../fuel/FuelForm';
 import { useExpenseForm } from './useExpenseForm';
@@ -26,6 +27,19 @@ export function ExpenseForm(props: FormProps<Extract<FormProps['request'], { kin
   const chrome = useFormChrome(props, form, form.isEdit ? '已更新費用' : '已儲存費用');
   const { values, setField, errors } = form;
 
+  const onScan = async (file: File) => {
+    const res = await scanReceipt(file);
+    if (!res.ok) return { ok: false as const, message: res.message };
+    const applied = form.applyInvoice(res.fill);
+    if (!applied.ok) {
+      return { ok: false as const, message: `這張發票已在 ${applied.duplicateOf.date} 記錄過` };
+    }
+    return {
+      ok: true as const,
+      message: `已從發票 ${res.fill.invoiceNumber} 填入日期、金額，品項寫在備註`,
+    };
+  };
+
   return (
     <FormLayout
       title={form.isEdit ? '編輯費用' : '記費用'}
@@ -36,6 +50,7 @@ export function ExpenseForm(props: FormProps<Extract<FormProps['request'], { kin
       warning={form.warning}
       error={chrome.saveError}
     >
+      <ReceiptScanButton onScan={onScan} />
       <div className="field">
         <span className="field-label">分類</span>
         <ChipSelect
@@ -81,10 +96,9 @@ export function ExpenseForm(props: FormProps<Extract<FormProps['request'], { kin
             error={errors.odometer}
           />
           <TextArea label="備註" value={values.note} onChange={(v) => setField('note', v)} />
-          <PhotoField db={db} photoIds={values.photoIds} onChange={(ids) => setField('photoIds', ids)} />
         </>
       ) : (
-        <MoreFieldsButton label="里程、備註、照片" onClick={chrome.expand} />
+        <MoreFieldsButton label="里程、備註" onClick={chrome.expand} />
       )}
     </FormLayout>
   );

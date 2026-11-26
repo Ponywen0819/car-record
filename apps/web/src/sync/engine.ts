@@ -9,9 +9,7 @@
  *      - network error / 5xx → keep pending, attempts++, exponential backoff
  *        (1s, 2s, 4s … capped at 5 min) before the next automatic attempt.
  *      - 401 → state 'error', lastError 'unauthorized'.
- *   2. Upload pending photos: PUT {baseUrl}/api/photos/:id with the blob body and its
- *      Content-Type; on 2xx set status 'uploaded' and drop the blob.
- *   3. Pull: GET {baseUrl}/api/sync/pull?since=<cursor>&limit=… until hasMore is false.
+ *   2. Pull: GET {baseUrl}/api/sync/pull?since=<cursor>&limit=… until hasMore is false.
  *      Put each changed record into the cache EXCEPT records that still have a pending
  *      outbox entry (local changes win until pushed). Save the cursor in meta.
  *   Concurrent calls share the in-flight run. Never throws: errors go into the status.
@@ -22,7 +20,7 @@
  *
  * Status: 'offline' when online() is false or the fetch failed at network level;
  *   'syncing' while running; 'error' after a non-network failure; else 'idle'.
- *   `pending` / `failed` = outbox counts by status (+ pending photos in `pending`).
+ *   `pending` / `failed` = outbox counts by status.
  *   Requests send `Authorization: Bearer <token>` when getToken() returns a value.
  *
  * Implementation notes (beyond the contract):
@@ -179,12 +177,11 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   async function refreshCounts(): Promise<void> {
     try {
-      const [pendingOutbox, failed, pendingPhotos] = await Promise.all([
+      const [pending, failed] = await Promise.all([
         db.outbox.where('status').equals('pending').count(),
         db.outbox.where('status').equals('failed').count(),
-        db.photos.where('status').equals('pending').count(),
       ]);
-      const patch: Partial<SyncStatus> = { pending: pendingOutbox + pendingPhotos, failed };
+      const patch: Partial<SyncStatus> = { pending, failed };
       if (status.lastSyncAt === undefined) {
         const last = (await db.meta.get(META_LAST_SYNC_AT))?.value;
         if (typeof last === 'number') patch.lastSyncAt = last;
@@ -321,33 +318,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     });
   }
 
-  // ---- photos ------------------------------------------------------------------------
-
-  /** Returns an error message if some upload was refused (4xx), else undefined. */
-  async function uploadPhotos(): Promise<string | undefined> {
-    const pending = await db.photos.where('status').equals('pending').toArray();
-    let refused: string | undefined;
-    for (const photo of pending) {
-      if (!photo.blob) continue;
-      const res = await request(`/api/photos/${encodeURIComponent(photo.id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': photo.contentType },
-        body: photo.blob,
-      });
-      if (!res.ok) {
-        refused = `photo upload failed: HTTP ${res.status}`;
-        continue;
-      }
-      await db.photos.put({
-        id: photo.id,
-        contentType: photo.contentType,
-        status: 'uploaded',
-        createdAt: photo.createdAt,
-      });
-    }
-    return refused;
-  }
-
   // ---- pull --------------------------------------------------------------------------
 
   async function pull(): Promise<void> {
@@ -409,7 +379,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     }
     try {
       await push();
-      const photoError = await uploadPhotos();
       await pull();
       const at = now();
       await db.meta.put({ key: META_LAST_SYNC_AT, value: at });
@@ -417,9 +386,9 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       clearRetry();
       await refreshCounts();
       setStatus({
-        state: photoError ? 'error' : 'idle',
+        state: 'idle',
         lastSyncAt: at,
-        lastError: photoError,
+        lastError: undefined,
       });
     } catch (err) {
       const failure =

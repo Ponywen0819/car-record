@@ -6,8 +6,6 @@ export interface ServerConfig {
   port: number;
   /** postgres:// or postgresql:// connection string (required). */
   databaseUrl: string;
-  /** Photos live in <dataDir>/photos. */
-  dataDir: string;
   apiToken?: string;
   /** undefined = don't serve static files (API only). */
   staticDir?: string;
@@ -49,7 +47,6 @@ export function loadConfig(
   return {
     port,
     databaseUrl,
-    dataDir: path.resolve(cwd, env.DATA_DIR || 'data'),
     apiToken: env.API_TOKEN || undefined,
     staticDir,
   };

@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import type { ExpenseCategory, ExpenseRecord } from '@car-record/shared';
-import { lastValue } from '../../domain';
+import { lastValue, type ReceiptInvoiceFill } from '../../domain';
 import { saveRecord, type Draft } from '../../db/repository';
-import { compact, formatInputNumber } from '../../lib/format';
+import { compact, formatInputNumber, isBlank } from '../../lib/format';
 import {
   DATE_RE,
   readNumber,
@@ -23,8 +23,10 @@ export interface ExpenseFormValues {
   note: string;
   recurring: boolean;
   everyMonths: string;
-  photoIds: string[];
+  invoiceNumber: string;
 }
+
+export type ApplyExpenseInvoiceResult = { ok: true } | { ok: false; duplicateOf: ExpenseRecord };
 
 export interface UseExpenseFormOptions extends EntryFormContext {
   expenseRecords: ExpenseRecord[];
@@ -43,7 +45,7 @@ function initialValues(o: UseExpenseFormOptions): ExpenseFormValues {
       note: r.note ?? '',
       recurring: r.recurring !== undefined,
       everyMonths: formatInputNumber(r.recurring?.everyMonths ?? 12),
-      photoIds: r.photoIds ?? [],
+      invoiceNumber: r.invoiceNumber ?? '',
     };
   }
   const d = o.duplicateOf;
@@ -55,13 +57,13 @@ function initialValues(o: UseExpenseFormOptions): ExpenseFormValues {
     note: d?.note ?? '',
     recurring: d?.recurring !== undefined && d !== undefined,
     everyMonths: formatInputNumber(d?.recurring?.everyMonths ?? 12),
-    photoIds: [],
+    invoiceNumber: '',
   };
 }
 
 export function useExpenseForm(o: UseExpenseFormOptions) {
   const form = useFormState(() => initialValues(o));
-  const { values, setErrors } = form;
+  const { values, setValues, setErrors } = form;
   const guard = useOdometerGuard(o.readings, o.record?.id);
   const { saving, run } = useSaving();
 
@@ -71,6 +73,37 @@ export function useExpenseForm(o: UseExpenseFormOptions) {
       form.setField(key, value);
     },
     [form, guard],
+  );
+
+  const applyInvoice = useCallback(
+    (fill: ReceiptInvoiceFill): ApplyExpenseInvoiceResult => {
+      const duplicate = o.expenseRecords.find(
+        (r) =>
+          (r.deletedAt === undefined || r.deletedAt === null) &&
+          r.id !== o.record?.id &&
+          r.invoiceNumber === fill.invoiceNumber,
+      );
+      if (duplicate) return { ok: false, duplicateOf: duplicate };
+
+      setValues((prev) => ({
+        ...prev,
+        date: fill.date,
+        cost: formatInputNumber(fill.total),
+        invoiceNumber: fill.invoiceNumber,
+        note: fill.note ? (isBlank(prev.note) ? fill.note : `${prev.note}\n${fill.note}`) : prev.note,
+      }));
+      guard.reset();
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.date;
+        delete next.cost;
+        delete next.note;
+        delete next.invoiceNumber;
+        return next;
+      });
+      return { ok: true };
+    },
+    [o.expenseRecords, o.record?.id, setValues, guard, setErrors],
   );
 
   const submit = useCallback(async (): Promise<SubmitResult<ExpenseRecord>> => {
@@ -90,6 +123,7 @@ export function useExpenseForm(o: UseExpenseFormOptions) {
     if (Object.keys(errors).length > 0 || cost === undefined) return { ok: false, reason: 'invalid' };
     if (odometer !== undefined && !guard.allow(odometer, values.date)) return { ok: false, reason: 'warning' };
 
+    const legacyPhotos = o.record?.photoIds && o.record.photoIds.length > 0 ? o.record.photoIds : undefined;
     const draft = compact({
       id: o.record?.id,
       createdAt: o.record?.createdAt,
@@ -99,8 +133,9 @@ export function useExpenseForm(o: UseExpenseFormOptions) {
       cost,
       odometer,
       recurring: everyMonths !== undefined ? { everyMonths } : undefined,
+      invoiceNumber: values.invoiceNumber || undefined,
       note: trimOrUndefined(values.note),
-      photoIds: values.photoIds.length > 0 ? values.photoIds : undefined,
+      photoIds: legacyPhotos,
     });
     return run(() => saveRecord(o.db, 'expenses', draft as Draft<'expenses'>, o.now?.()));
   }, [values, setErrors, guard, o, run]);
@@ -108,6 +143,7 @@ export function useExpenseForm(o: UseExpenseFormOptions) {
   return {
     values,
     setField,
+    applyInvoice,
     errors: form.errors,
     warning: guard.warning,
     dirty: form.dirty,

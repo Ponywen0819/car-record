@@ -53,8 +53,10 @@
 | 項目（可複選） | ✅ | 機油、機油芯、空濾、冷氣濾網、煞車油、變速箱油、水箱水、火星塞、輪胎、電瓶、雨刷…… |
 | 保養廠 | | 自動帶入上次的保養廠 |
 | 費用 | | 可以只填總額，也可以逐項填 |
-| 照片 | | 工單、發票 |
-| 備註 | | |
+| 發票號碼 | | 掃描電子發票時自動寫入，用來防止重複入帳 |
+| 備註 | | 掃描電子發票時會自動寫入品項明細 |
+
+支援透過表單上方的「掃描發票」按鈕離線解析台灣電子發票 QR code，自動填入日期、總金額與品項備註（不拍存照片）。
 
 ### 2.3 加油／充電紀錄
 
@@ -66,13 +68,18 @@
 | 單價、總價 | | 填其中兩個，第三個自動算出 |
 | 是否加滿 | ✅ | 預設為是，計算油耗必須用到 |
 | 加油站 | | 自動帶入上次的加油站 |
+| 油品 | | 92／95／98／柴油，自動帶入上次的油品（純電車不顯示） |
+| 發票號碼 | | 掃描電子發票時自動寫入，用來防止重複入帳 |
+| 備註 | | |
+
+**掃描發票**（油車／油電車）：加油紀錄不拍存照片，改由表單上方的「掃描發票」按鈕在手機端直接解析台灣電子發票證明聯的左右兩個 QR code（透過 `zxing-wasm` 在本機離線辨識，照片不會儲存或上傳），自動帶入日期、油量、單價、總價與油品，並將發票字軌號碼（`invoiceNumber`）隨紀錄存檔以拒絕同一張發票重複入帳。
 
 **油耗計算**：用兩次「加滿」之間的里程差 ÷ 這段期間加入的總油量（中間沒加滿的油量也要算進去）。
 
 ### 2.4 其他費用紀錄
 
 - 分類：牌照稅、燃料費、保險（強制險／任意險）、停車、過路費、洗車、罰單、貸款、其他
-- 欄位：日期、分類、金額、備註
+- 欄位：日期、分類、金額、備註（支援「掃描發票」離線解析電子發票 QR code 自動填入日期、金額與品項備註）
 - 可以設成週期性支出，例如保險每年一次，到期前提醒
 
 ### 2.5 提醒系統
@@ -117,7 +124,7 @@
 - 所有資料以 server 為準，手機上的資料只是快取（詳見 [4.5 離線同步設計](#45-離線同步設計)）
 - 離線時照常新增、編輯、刪除，恢復連線後自動同步
 - 畫面上顯示同步狀態：已同步／N 筆待上傳／離線
-- Server 端備份資料庫和照片
+- Server 端備份 PostgreSQL 資料庫（單據改在手機端離線掃描電子發票 QR code，不儲存照片）
 - 保留匯出 JSON／CSV 的功能，方便另外存檔或分析
 
 ---
@@ -140,7 +147,8 @@ interface BaseRecord {
   odometer?: number;     // km；費用紀錄可省略
   cost?: number;         // 元
   note?: string;
-  photoIds?: string[];   // 照片另外存放（Blob）
+  invoiceNumber?: string; // 台灣電子發票字軌號碼（例如 QZ87654321），用來防止重複入帳
+  photoIds?: string[];   // 舊版相容欄位（新版不再新增或顯示照片）
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;    // 軟刪除：支援復原，刪除也能同步到其他裝置
@@ -172,6 +180,7 @@ interface FuelRecord extends BaseRecord {
   unitPrice?: number;
   isFull: boolean;
   station?: string;
+  grade?: string;
 }
 
 interface ExpenseRecord extends BaseRecord {
@@ -207,7 +216,7 @@ interface ReminderRule {
 | 離線與快取 | **vite-plugin-pwa**（Workbox） | 自動產生 Service Worker 和 manifest |
 | 圖表 | **Chart.js**（react-chartjs-2） | 輕量，觸控提示框可用 |
 | 日期處理 | **date-fns** | 可以只引入用到的函式 |
-| 圖片壓縮 | **browser-image-compression** | 手機照片動輒數 MB，存入前壓到約 200 KB |
+| 條碼辨識 | **zxing-wasm** | 在手機端離線解析台灣電子發票證明聯的左右兩個 QR code（含 Big5 編碼品項），不儲存或上傳照片 |
 | Server | **Node.js + Hono** | 輕量、TypeScript 原生；同一個 server 提供網頁檔案和 API |
 | Server 資料庫 | **PostgreSQL**（`pg` 驅動，純 JS） | 使用自家既有的 Postgres，用 `pg_dump` 備份；啟動時自動建立／升級資料表。所有資料表共用一張通用的 `records` 表（JSONB），由 zod 驗證。測試用 PGlite（編譯成 WASM 的 Postgres） |
 | 共用型別與驗證 | **zod**（放在 `packages/shared`） | 前端和 server 共用同一份資料定義和驗證規則 |
@@ -235,16 +244,14 @@ interface ReminderRule {
 │  Service Worker（離線快取網頁檔案）          │
 └────────────────────────────────────────────┘
         ▲                    │
-   網頁檔案          /api/sync/push、/api/sync/pull、/api/photos
+   網頁檔案          /api/sync/push、/api/sync/pull
         │                    ▼
    （HTTPS：外部處理，不在本專案範圍內）
         │                    │
 ┌────────────────────────────────────────────┐
 │ 自家主機：Node.js HTTP server（Docker）      │
 │  ├ 提供 build 後的網頁檔案                   │
-│  ├ 同步 API                                 │
-│  └ /data（掛載的 volume）                    │
-│     └ photos/（照片檔案）                    │
+│  └ 同步 API                                 │
 └────────────────────────────────────────────┘
         │ DATABASE_URL
 ┌────────────────────────────────────────────┐
@@ -253,7 +260,7 @@ interface ReminderRule {
 ```
 
 - **Server 是唯一的資料來源**：手機上的資料隨時可以清掉，再從 server 重建
-- 備份：Postgres 用 `pg_dump`，照片備份 `/data` volume
+- 備份：所有資料都在 Postgres，用 `pg_dump` 備份即可
 - 之後的推播、油價中繼也加在同一個 server 上
 
 ### 4.3 專案結構（建議）
@@ -280,8 +287,8 @@ apps/
         ├── database.ts      # Postgres 連線（pg pool）
         ├── store.ts         # 儲存層、migration
         ├── testing/         # 測試用資料庫（PGlite 或 TEST_DATABASE_URL）
-        ├── routes/          # sync、photos、healthz
-        └── index.ts         # 提供網頁檔案 + API
+        ├── app.ts           # sync、healthz 與靜態檔案
+        └── main.ts          # 啟動 HTTP server
 packages/
 └── shared/                  # 共用型別、zod schema、同步協定定義
 deploy/
@@ -296,7 +303,7 @@ deploy/
 ```
 deploy/
 ├── Dockerfile          # 多階段：建置 web + server → 單一 Node 執行映像
-└── docker-compose.yml  # 對應連接埠、掛載 /data
+└── docker-compose.yml  # 對應連接埠與環境變數
 ```
 
 | 項目 | 規格 |
@@ -304,8 +311,8 @@ deploy/
 | 協定 | 純 HTTP |
 | 連接埠 | 可設定，預設 `8080` |
 | 內容 | 前端 `dist/`（靜態檔案）+ `/api/*`（API） |
-| 資料 | 紀錄在既有的 PostgreSQL（`DATABASE_URL`）；照片在 `/data` volume 的 `photos/` |
-| 設定 | 環境變數：`DATABASE_URL`（必填）、`PORT`、`DATA_DIR`、`API_TOKEN`（選用） |
+| 資料 | 紀錄全部存在既有的 PostgreSQL（`DATABASE_URL`） |
+| 設定 | 環境變數：`DATABASE_URL`（必填）、`PORT`、`STATIC_DIR`、`API_TOKEN`（選用） |
 | SPA 路由 | 找不到的路徑一律回傳 `index.html`，讓 `/add/fuel` 這類網址可以直接開啟 |
 | 快取 | `sw.js`、`index.html`、`manifest.webmanifest` 設 `no-cache`，確保更新能生效；帶 hash 的資源檔設長期快取 |
 | 壓縮 | 開啟 gzip（Hono compress middleware） |
@@ -341,7 +348,6 @@ GET  /api/sync/pull?since=<cursor> → 取回其他裝置的變更，更新快�
 | 重送安全（冪等） | 每筆 outbox 變更都有 `mutationId`；server 記錄已處理過的 id，重送不會重複套用 |
 | 衝突處理 | 自用、裝置少，採**最後寫入者勝（LWW）**，以 server 收到的順序為準。被覆蓋的舊版本寫入 `record_history` 表，必要時可以找回 |
 | 推送順序 | outbox 依建立順序送出；同一批在一個交易內套用 |
-| 照片 | 另外上傳到 `PUT /api/photos/:id`。上傳完成前手機保留壓縮檔；完成後清掉本機檔案，需要時再從 server 讀取（由 Service Worker 快取） |
 | 失敗重試 | 指數退避（1s → 2s → 4s … 最多 5 分鐘）；4xx 錯誤標記為失敗並顯示，不無限重試 |
 
 **同步時機**（iOS 不支援 Background Sync API，只能在 App 開著時同步）
@@ -357,8 +363,6 @@ GET  /api/sync/pull?since=<cursor> → 取回其他裝置的變更，更新快�
 |---|---|---|
 | POST | `/api/sync/push` | `{ mutations: [{ mutationId, table, record }] }`，一律是整筆覆寫（刪除就是帶 `deletedAt` 的覆寫）→ 回傳每筆的結果（applied／duplicate／rejected）和新的 `rev` |
 | GET | `/api/sync/pull?since=<rev>&limit=500` | 回傳 `{ changes: [...], cursor, hasMore }` |
-| PUT | `/api/photos/:id` | 上傳照片 |
-| GET | `/api/photos/:id` | 取得照片 |
 | GET | `/healthz` | 健康檢查 |
 
 **其他**
@@ -433,7 +437,7 @@ GET  /api/sync/pull?since=<cursor> → 取回其他裝置的變更，更新快�
 | 日期 | 預設為今天，點一下才展開 iOS 原生日期選擇器 |
 | 鍵盤遮擋 | 用 `visualViewport` API 讓儲存按鈕浮在鍵盤上方 |
 | 鍵盤送出 | `enterkeyhint="next"` 跳到下一欄，最後一欄用 `"done"` 直接儲存 |
-| 拍照 | `<input type="file" accept="image/*" capture="environment">` 直接開相機 |
+| 掃描發票 | `<input type="file" accept="image/*">`（不加 `capture`，讓 iOS 同時提供拍照與相簿）在手機端離線解析電子發票 QR code |
 
 ### 5.4 iOS 系統整合：「捷徑」App
 
@@ -470,7 +474,6 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 | 不支援震動 | 沒有觸覺回饋 | 用視覺回饋代替 |
 | 不支援 manifest shortcuts／share target | 不能長按 App 圖示出現選單，也不能從其他 App 分享進來 | 用「捷徑」App 加網址路由代替 |
 | 返回手勢支援不一致 | Standalone 模式下的系統返回手勢不可靠 | 由 Ionic 路由自行處理從左緣滑動返回 |
-| 照片佔空間 | 大量照片讓 IndexedDB 越來越大 | 存入前先壓縮；上傳到 server 後清掉手機上的檔案 |
 
 > ⚠️ `.ics` 下載在 Standalone 模式下的行為要實際在 iPhone 上測試。如果無法直接加入行事曆，就改用分享面板匯出。
 
@@ -498,7 +501,7 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 - [x] 其他費用紀錄（含週期性支出）
 - [x] 統計圖表（油耗趨勢、花費分布、每公里成本）
 - [x] 證件和費用到期提醒
-- [x] 照片附件（壓縮後上傳 server）
+- [x] 電子發票 QR code 離線掃描（取代照片附件）
 - [x] 網址路由 + 「捷徑」App 和 NFC 整合
 - [x] 提醒匯出到行事曆（.ics）
 - [x] App 圖示角標
@@ -506,7 +509,7 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 
 ### 第三階段：選用
 
-- [ ] Server 端定期備份（pg_dump + 照片）
+- [ ] Server 端定期備份（pg_dump）
 - [ ] Web Push 推播提醒
 - [x] CSV 匯出
 
@@ -515,6 +518,6 @@ App 需要支援的網址路由：`/add/fuel`、`/add/maintenance`、`/add/expen
 ## 8. 未來延伸（不在核心範圍）
 
 - **硬體自動取得里程**：例如藍牙 OBD-II。但 iOS Safari 不支援 Web Bluetooth，要另外做中介（例如 ESP32 透過 Wi-Fi 上傳到後端）
-- **OCR 辨識**：拍發票或工單自動填入，可以考慮串接多模態 LLM API
+- **OCR 辨識**：加油、保養與費用發票已由台灣電子發票 QR code 本機掃描涵蓋；無電子發票的紙本保養工單未來可考慮串接 OCR 或多模態 LLM API 自動填入
 - **匯出 PDF 保養履歷**（賣車時用）
 - **耗材壽命追蹤**：輪胎胎紋、煞車來令片厚度

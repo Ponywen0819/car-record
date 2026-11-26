@@ -33,6 +33,9 @@
  *   CalendarEvent, buildIcs
  * exportData.ts
  *   toCsv, ExportSnapshot, buildSnapshot, parseSnapshot
+ * einvoice.ts
+ *   EInvoiceError, EInvoiceItem, EInvoice, FuelInvoiceFill, ReceiptInvoiceFill,
+ *   parseEInvoice, fuelFromInvoice, receiptFromInvoice
  */
 
 export { todayISO, daysBetween, addDays, addMonths, isoDateFromMs, lastNMonths, monthOf } from './dates';
@@ -87,3 +90,14 @@ export { defaultReminderRules, lastValue } from './defaults';
 export { buildIcs, type CalendarEvent } from './ics';
 
 export { toCsv, buildSnapshot, parseSnapshot, type ExportSnapshot } from './exportData';
+
+export {
+  EInvoiceError,
+  parseEInvoice,
+  fuelFromInvoice,
+  receiptFromInvoice,
+  type EInvoiceItem,
+  type EInvoice,
+  type FuelInvoiceFill,
+  type ReceiptInvoiceFill,
+} from './einvoice';
